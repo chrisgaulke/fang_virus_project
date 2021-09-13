@@ -41,6 +41,7 @@
 #BiocManager::install("dada2")
 library(dada2)
 library(ggplot2)
+library(vegan)
 
 
 # IMPORT DATA -------------------------------------------------------------
@@ -161,3 +162,60 @@ taxa <- addSpecies(taxa, "/Users/cgaulke/unsynced_projects/db/silva_dada2/silva_
 taxa.print <- taxa
 rownames(taxa.print) <- NULL
 head(taxa.print)
+
+
+# IMPORT: METADATA --------------------------------------------------------
+Master_metadata.df <- read.table("/Users/cgaulke/Documents/research/fang_virus_colab/data/metadata.txt",
+                                sep = "\t",
+                                header = T,
+                                row.names = 1)
+
+
+# ANALYSIS: NORMALIZE -----------------------------------------------------
+
+seqtab_nochim.relabd <- sweep(seqtab.nochim,
+                              MARGIN = 1,
+                              rowSums(seqtab.nochim),
+                              FUN = '/'
+)
+
+
+# ANALYSIS: PCA -----------------------------------------------------------
+
+#make PCA object
+seqtab_nochim.pca <- prcomp(seqtab_nochim.relabd,scale. = F, center = T)
+
+#check that rownames are the same
+all(rownames(seqtab_nochim.pca$x) == rownames(Master_metadata.df))
+
+#make a PCA data frame
+seqtab_nochim_pca.df <- as.data.frame(seqtab_nochim.pca$x[,1:5])
+
+#add metadata for plotting
+seqtab_nochim_pca.df$Vaccination_status <- Master_metadata.df$Vaccination_status
+seqtab_nochim_pca.df$Sample_type <- Master_metadata.df$Sample_type
+seqtab_nochim_pca.df$date <- Master_metadata.df$date
+seqtab_nochim_pca.df$group <- Master_metadata.df$group
+seqtab_nochim_pca.df$ID <- Master_metadata.df$ID
+
+seqtab_nochim_pca.plot <- ggplot(data = seqtab_nochim_pca.df,
+                                 aes(x = PC2,
+                                     y = PC3,
+                                     color = group,
+                                     shape = Sample_type))
+
+seqtab_nochim_pca.plot +
+  geom_point()
+
+
+# ANALYSIS: ADONIS --------------------------------------------------------
+
+set.seed(731)
+
+seqtab_nochim.adonis <- adonis(seqtab_nochim.relabd ~ group + Sample_type + Vaccination_status,
+                               permutations = 5000,
+                               data = Master_metadata.df)
+
+seqtab_nochim.adonis
+
+
