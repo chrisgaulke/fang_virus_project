@@ -281,3 +281,69 @@ fecal_seqtab_nochim.adonis <- adonis(fecal_seqtab_nochim.relabd ~  group * date 
                                data = fecal_master_metadata.df)
 
 fecal_seqtab_nochim.adonis
+
+
+# ANALYSIS: nasal ANALYSIS ------------------------------------------------
+
+#Get names for nasal samples
+
+nasal.names <- rownames(Master_metadata.df[which(Master_metadata.df$Sample_type == "NS"), ])
+
+nasal_seqtab_nochim.relabd <- seqtab_nochim.relabd[nasal.names,]
+nasal_master_metadata.df   <- Master_metadata.df[nasal.names,]
+
+
+# ANALYSIS: nasal PCA -----------------------------------------------------
+
+
+#make PCA object
+nasal_seqtab_nochim.pca <- prcomp(nasal_seqtab_nochim.relabd,scale. = F, center = T)
+
+#get varaince %
+summary(nasal_seqtab_nochim.pca)
+
+#plot variances in skree plot
+plot(nasal_seqtab_nochim.pca)
+
+#check that rownames are the same
+all(rownames(nasal_seqtab_nochim.pca$x) == rownames(nasal_master_metadata.df))
+
+#make a PCA data frame
+nasal_seqtab_nochim_pca.df <- as.data.frame(nasal_seqtab_nochim.pca$x[,1:5])
+
+#add metadata for plotting
+nasal_seqtab_nochim_pca.df$Vaccination_status <- nasal_master_metadata.df$Vaccination_status
+nasal_seqtab_nochim_pca.df$date <- nasal_master_metadata.df$date
+nasal_seqtab_nochim_pca.df$group <- nasal_master_metadata.df$group
+nasal_seqtab_nochim_pca.df$ID <- nasal_master_metadata.df$ID
+
+nasal_seqtab_nochim_pca.plot <- ggplot(data = nasal_seqtab_nochim_pca.df,
+                                       aes(x = PC2,
+                                           y = PC3,
+                                           color = group,
+                                           shape = date))
+
+nasal_seqtab_nochim_pca.plot +
+  geom_point(size = 3)
+
+
+
+nasal_seqtab_nochim_pca.plot +
+  geom_point(data = ~ subset(., date == "0d") ,size = 3)
+
+nasal_seqtab_nochim_pca.plot +
+  geom_point(data = ~ subset(., date == "5d") ,size = 3)
+
+nasal_seqtab_nochim_pca.plot +
+  geom_point(data = ~ subset(., date == "22d") ,size = 3)
+
+
+# ANALYSIS: nasal ADONIS --------------------------------------------------------
+
+set.seed(731)
+
+nasal_seqtab_nochim.adonis <- adonis(nasal_seqtab_nochim.relabd ~  group * date +ID ,
+                                     permutations = 5000,
+                                     data = nasal_master_metadata.df)
+
+nasal_seqtab_nochim.adonis
