@@ -205,7 +205,7 @@ seqtab_nochim_pca.plot <- ggplot(data = seqtab_nochim_pca.df,
                                      shape = Sample_type))
 
 seqtab_nochim_pca.plot +
-  geom_point()
+  geom_point(size = 3)
 
 
 # ANALYSIS: ADONIS --------------------------------------------------------
@@ -219,3 +219,65 @@ seqtab_nochim.adonis <- adonis(seqtab_nochim.relabd ~ group + Sample_type + Vacc
 seqtab_nochim.adonis
 
 
+# ANALYSIS: FECAL ANALYSIS ------------------------------------------------
+
+
+#Get names for fecal samples
+
+fecal.names <- rownames(Master_metadata.df[which(Master_metadata.df$Sample_type == "FS"), ])
+
+fecal_seqtab_nochim.relabd <- seqtab_nochim.relabd[fecal.names,]
+fecal_master_metadata.df   <- Master_metadata.df[fecal.names,]
+
+
+# ANALYSIS: FECAL PCA -----------------------------------------------------
+
+
+#make PCA object
+fecal_seqtab_nochim.pca <- prcomp(fecal_seqtab_nochim.relabd,scale. = F, center = T)
+
+#get varaince %
+summary(fecal_seqtab_nochim.pca)
+
+#plot variances in skree plot
+plot(fecal_seqtab_nochim.pca)
+
+#check that rownames are the same
+all(rownames(fecal_seqtab_nochim.pca$x) == rownames(fecal_master_metadata.df))
+
+#make a PCA data frame
+fecal_seqtab_nochim_pca.df <- as.data.frame(fecal_seqtab_nochim.pca$x[,1:5])
+
+#add metadata for plotting
+fecal_seqtab_nochim_pca.df$Vaccination_status <- fecal_master_metadata.df$Vaccination_status
+fecal_seqtab_nochim_pca.df$date <- fecal_master_metadata.df$date
+fecal_seqtab_nochim_pca.df$group <- fecal_master_metadata.df$group
+fecal_seqtab_nochim_pca.df$ID <- fecal_master_metadata.df$ID
+
+fecal_seqtab_nochim_pca.plot <- ggplot(data = fecal_seqtab_nochim_pca.df,
+                                 aes(x = PC1,
+                                     y = PC2,
+                                     color = group,
+                                     shape = date))
+
+fecal_seqtab_nochim_pca.plot +
+  geom_point(size = 3)+
+  scale_color_brewer(palette = "Set1") # look into better colors
+
+fecal_seqtab_nochim_pca.plot +
+  geom_point(data = ~ subset(., date == "35d") ,size = 3)
+
+
+fecal_seqtab_nochim_pca.plot +
+  geom_point(data = ~ subset(., date == "45d") ,size = 3)
+
+
+# ANALYSIS: FECAL ADONIS --------------------------------------------------------
+
+set.seed(731)
+
+fecal_seqtab_nochim.adonis <- adonis(fecal_seqtab_nochim.relabd ~  group * date +ID ,
+                               permutations = 5000,
+                               data = fecal_master_metadata.df)
+
+fecal_seqtab_nochim.adonis
