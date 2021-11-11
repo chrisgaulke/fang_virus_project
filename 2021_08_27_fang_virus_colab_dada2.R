@@ -35,6 +35,10 @@ library(dada2)
 library(ggplot2)
 library(vegan)
 library(cowplot)
+library(lme4)
+library(glmmTMB)
+library(qvalue)
+library(reshape2)
 
 options("stringsAsFactors" = F)
 
@@ -241,6 +245,12 @@ add_metadata.df <- read.table("/Users/cgaulke/Documents/research/fang_virus_cola
                               row.names = NULL
                               )
 
+add_metadata.df$combined_id <- paste0(add_metadata.df$ID, "_", add_metadata.df$date)
+
+serum_metadata.df <- add_metadata.df[which(add_metadata.df$Sample_type == "Serum"),c(1:5,16:29)]
+lung_metadata.df <- add_metadata.df[which(add_metadata.df$Sample_type == "Lung"),c(1:9, 29)]
+pbmc_metadata.df <- add_metadata.df[which(add_metadata.df$Sample_type == "PBMC"),c(1:5,10:15,29)]
+
 
 # DATA: MAKE SEQ DICTIONARY -----------------------------------------------
 
@@ -302,7 +312,6 @@ pig.obj$data <- seqtab_nochim.rare
 #classifying taxonomy as also called phyotyping
 pig_phylotype <- phylotype_analysis(pig.obj, tax = pig.tax)
 
-rownames(pig_phylotype$genus) == rownames(rare_metadata.df)
 
 # ANALYSIS: PCA ASV ALL-----------------------------------------------------------
 
@@ -325,23 +334,36 @@ seqtab_nochim_pca.df$ID <- rare_metadata.df$ID
 seqtab_nochim_pca.plot <- ggplot(data = seqtab_nochim_pca.df,
                                  aes(x = PC1,
                                      y = PC2,
-                                     color = group,
-                                     shape = Sample_type))
+                                     color = Sample_type))
 
+pdf("figures/fang_all_samples_PCA.pdf", width = 4, height = 4)
 seqtab_nochim_pca.plot +
-  geom_point(size = 3)+
-  scale_fill_brewer(  type = "qual",
+  geom_point(size = 3, alpha = .7)+
+  scale_fill_brewer("",  type = "qual",
                       palette = 2,
                       direction = 1,
-                      aesthetics = "colour"
-  )
+                      aesthetics = "colour",
+                      labels = c("Fecal", "Nasal", "Placenta")
+  )+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+  )+
+  xlab("PC1 (25%)")+
+  ylab("PC2 (15%)")
+dev.off()
 
 # ANALYSIS: ADONIS --------------------------------------------------------
 
 set.seed(731)
 
-seqtab_nochim.adonis <- adonis(seqtab_nochim.rare ~ group + Sample_type + Vaccination_status,
-                               permutations = 5000,
+seqtab_nochim.adonis <- adonis2(seqtab_nochim.rare ~  Sample_type + Vaccination_status,
+                               permutations = 5000, by = "terms",
                                data = rare_metadata.df)
 
 seqtab_nochim.adonis
@@ -350,30 +372,127 @@ seqtab_nochim.adonis
 # ANALYSIS: FECAL ANALYSIS ------------------------------------------------
 
 #Get names for fecal samples
-
 fecal.names <- rownames(rare_metadata.df[which(rare_metadata.df$Sample_type == "FS"), ])
 
 #filter ASV table
 fecal_seqtab_nochim.relabd <- seqtab_nochim.relabd[fecal.names,]
 fecal_seqtab_nochim.relabd <- fecal_seqtab_nochim.relabd[,which(colSums(fecal_seqtab_nochim.relabd) > 0 )]
 
+fecal_seqtab_nochin.rare <- seqtab_nochim.rare[fecal.names,]
+fecal_seqtab_nochin.rare <- fecal_seqtab_nochin.rare[,which(colSums(fecal_seqtab_nochin.rare) > 0 )]
+
 #filter metadata
 fecal_master_metadata.df   <- rare_metadata.df[fecal.names,]
 fecal_master_metadata.df$vaccine <- ifelse(fecal_master_metadata.df$group == "G3" & fecal_master_metadata.df$date != "0d", 1,0)
 fecal_master_metadata.df$virus <- ifelse(fecal_master_metadata.df$group != "G5" & fecal_master_metadata.df$date == "45d", 1,0)
+fecal_master_metadata.df$combined <- paste0(fecal_master_metadata.df$virus, "_", fecal_master_metadata.df$vaccine)
 
 #filter genus
 fecal_genus.df <- pig_phylotype$genus[fecal.names,]
 fecal_genus.df <- fecal_genus.df[,which(colSums(fecal_genus.df) >0)]
 
 
+# ANALYSIS: FECAL ALPHA DIVERSITY -----------------------------------------
+
+fecal.richness <- specnumber(x = fecal_seqtab_nochin.rare,MARGIN = 1 )
+fecal.shannon  <- diversity(fecal_seqtab_nochin.rare,MARGIN = 1)
+
+# The most complicated - and powerful - of all models covered here are those
+# built using the glmmTMB package, which can handle everything from the relatively
+# simple gaussian models with a single random effect to more complex zero inflated
+# hurdle and other advanced modeling. Here we will us gaussian glmms to quantify
+# associations between alpha diversity, time, vaccination, and infection
+
+
+fecal_richness.glmmtmb <- glmmTMB(fecal.richness~ date + vaccine*virus + (1|ID),
+                                  data = fecal_master_metadata.df
+                                  )
+fecal_shannon.glmmtmb <- glmmTMB(fecal.shannon~ date + vaccine*virus + (1|ID),
+                                 data = fecal_master_metadata.df
+                                 )
+
+#for both models it appears as though
+
+#richness
+fecal_richness.df <- data.frame(richness = fecal.richness,
+                                group = fecal_master_metadata.df$combined)
+
+fecal_richness.plot <- ggplot(fecal_richness.df, aes(x = group,
+                              y = richness,
+                              fill = group))+
+  geom_boxplot()+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    axis.text.x = element_blank(),
+    axis.ticks.x =  element_blank(),
+    aspect.ratio = 1,
+    plot.title = element_text(size = 12, hjust = 0.5)
+  )+
+  scale_fill_brewer("",
+                    type = "qual",
+                    palette = 2,
+                    direction = 1,
+                    aesthetics = "fill",
+                    labels= c("Control", "Vaccine", "Virus", "Virus+Vaccine")
+  )+
+  xlab("")+
+  ylab("Richness")
+
+#shannon
+fecal_shannon.df <- data.frame(shannon = fecal.shannon,
+                                group = fecal_master_metadata.df$combined)
+
+fecal_shannon.plot <- ggplot(fecal_shannon.df, aes(x = group,
+                                                     y = shannon,
+                                                     fill = group))+
+  geom_boxplot()+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    axis.text.x = element_blank(),
+    axis.ticks.x =  element_blank(),
+    aspect.ratio = 1,
+    plot.title = element_text(size = 12, hjust = 0.5)
+  )+
+  scale_fill_brewer(
+    type = "qual",
+    palette = 2,
+    direction = 1,
+    aesthetics = "fill",
+    labels= c("Control", "Vaccine", "Virus", "Virus+Vaccine")
+  )+
+  xlab("")+
+  ylab("Shannon")
+
+legend <- get_legend(
+  fecal_richness.plot
+)
+
+pdf("figures/fecal_alpha_diversity.pdf",height = 4)
+plot_grid(fecal_richness.plot + theme(legend.position = "none"),
+          fecal_shannon.plot + theme(legend.position = "none"),
+          legend, ncol = 3,rel_widths = c(2,2,1),
+          labels = c("A","B"),
+          label_size = 20
+            )
+dev.off()
+
 # ANALYSIS: FECAL PCA ASV-----------------------------------------------------
 
 #make PCA object
-fecal_seqtab_nochim.pca <- prcomp(fecal_seqtab_nochim.relabd,scale. = F, center = T)
+fecal_seqtab_nochim.pca <- prcomp(fecal_seqtab_nochin.rare,scale. = F, center = T)
 
-#get varaince %
-summary(fecal_seqtab_nochim.pca)
+#get portion of variance explained by each axis
+summary(fecal_seqtab_nochim.pca)$importance[,1:5]
 
 #plot variances in skree plot
 plot(fecal_seqtab_nochim.pca)
@@ -399,41 +518,41 @@ fecal_seqtab_nochim_pca.plot <- ggplot(data = fecal_seqtab_nochim_pca.df,
 #ugly duckling example
 
 fecal_seqtab_nochim_pca.plot +
-  geom_point(size = 5) +
-  scale_color_brewer("Group", type = "qual",
-                                         palette = 2,
-                                         direction = 1,
-                                         aesthetics = "colour",
-                                         labels= c("Vir+Vax", "Vir", "Control")
-  )+
-  stat_ellipse(inherit.aes = FALSE,
-               type = "t",
-               level = .3, #since we don't care about the stat, we can lower confidence interval
-               geom = "polygon",
-               alpha = .3,
-               data = fecal_seqtab_nochim_pca.df,
-               aes(x = PC1,
-                   y = PC2,
-                   color = group,
-                   fill = group)
-  )+
-  scale_fill_brewer(type = "qual",
-                    palette = 2,
-                    direction = 1,
-                    aesthetics = "fill"
-  )+
-  theme(
-    text = element_text(size = 20, colour = "black"),
-    panel.grid.major = element_line(colour = "grey99"),
-    panel.grid.minor = element_blank(),
-    panel.background = element_blank(),
-    axis.line = element_line(colour = "black"),
-    axis.text = element_text(colour = "black"),
-    aspect.ratio = 1,
-    plot.title = element_text(hjust = 0.5)
-  )+
-  guides(fill = "none") +ggtitle("All")
-
+  geom_point(size = 5) #+
+  # scale_color_brewer("Group", type = "qual",
+  #                                        palette = 2,
+  #                                        direction = 1,
+  #                                        aesthetics = "colour",
+  #                                        labels= c("Vir+Vax", "Vir", "Control")
+  # )+
+  # stat_ellipse(inherit.aes = FALSE,
+  #              type = "t",
+  #              level = .3, #since we don't care about the stat, we can lower confidence interval
+  #              geom = "polygon",
+  #              alpha = .3,
+  #              data = fecal_seqtab_nochim_pca.df,
+  #              aes(x = PC1,
+  #                  y = PC2,
+  #                  color = group,
+  #                  fill = group)
+  # )+
+  # scale_fill_brewer(type = "qual",
+  #                   palette = 2,
+  #                   direction = 1,
+  #                   aesthetics = "fill"
+  # )+
+  # theme(
+  #   text = element_text(size = 20, colour = "black"),
+  #   panel.grid.major = element_line(colour = "grey99"),
+  #   panel.grid.minor = element_blank(),
+  #   panel.background = element_blank(),
+  #   axis.line = element_line(colour = "black"),
+  #   axis.text = element_text(colour = "black"),
+  #   aspect.ratio = 1,
+  #   plot.title = element_text(hjust = 0.5)
+  # )+
+  # guides(fill = "none") +ggtitle("All")
+  #
 
 
 # ANALYSIS: FECAL PCA ASV PANEL PLOT --------------------------------------
@@ -596,9 +715,13 @@ fecal_asv_by_day.plot <- plot_grid(fecal_seqtab_nochim_pca.plotall,
                                    fecal_seqtab_nochim_pca.plot0d,
                                    fecal_seqtab_nochim_pca.plot35d,
                                    fecal_seqtab_nochim_pca.plot45d,
-                                   labels = "AUTO"
+                                   labels = "AUTO", label_size = 30
+
 )
+
+pdf("figures/fecal_asv_pca_plots.pdf", width = 14, height = 14)
 fecal_asv_by_day.plot
+dev.off()
 
 # ANALYSIS: FECAL ADONIS ASV --------------------------------------------------------
 
@@ -666,6 +789,8 @@ fecal_genus_pca.plot <- ggplot(data = fecal_genus_pca.df,
 
 
 
+# ANALYSIS: FECAL PCA GENUS PANEL PLOTS -----------------------------------
+
 #all
 fecal_genus_pca.plotall <- fecal_genus_pca.plot +
   geom_point(size = 5) +
@@ -675,22 +800,22 @@ fecal_genus_pca.plotall <- fecal_genus_pca.plot +
                      aesthetics = "colour",
                      labels= c("Vir+Vax", "Vir", "Control")
   )+
-  stat_ellipse(inherit.aes = FALSE,
-               type = "t",
-               level = .3, #since we don't care about the stat, we can lower confidence interval
-               geom = "polygon",
-               alpha = .3,
-               data = fecal_genus_pca.df,
-               aes(x = PC1,
-                   y = PC2,
-                   color = group,
-                   fill = group)
-  )+
-  scale_fill_brewer(type = "qual",
-                    palette = 2,
-                    direction = 1,
-                    aesthetics = "fill"
-  ) +
+  # stat_ellipse(inherit.aes = FALSE,
+  #              type = "t",
+  #              level = .3, #since we don't care about the stat, we can lower confidence interval
+  #              geom = "polygon",
+  #              alpha = .3,
+  #              data = fecal_genus_pca.df,
+  #              aes(x = PC1,
+  #                  y = PC2,
+  #                  color = group,
+  #                  fill = group)
+  # )+
+  # scale_fill_brewer(type = "qual",
+  #                   palette = 2,
+  #                   direction = 1,
+  #                   aesthetics = "fill"
+  # ) +
   theme(
     text = element_text(size = 20, colour = "black"),
     panel.grid.major = element_line(colour = "grey99"),
@@ -825,9 +950,16 @@ fecal_genus_by_day.plot <- plot_grid(fecal_genus_pca.plotall,
                                      fecal_genus_pca.plot0d,
                                      fecal_genus_pca.plot35d,
                                      fecal_genus_pca.plot45d,
-                                     labels = "AUTO"
+                                     labels = "AUTO",
+                                     label_size = 30
                                      )
+
+
+pdf("figures/fecal_genus_pca_plots.pdf", width = 14, height = 14)
+
 fecal_genus_by_day.plot
+
+dev.off()
 
 # something strange is going on here... Why are only G5 and G3 moving at day 45?
 # Could the metadata be off, or was something done to these animals that is different
@@ -845,7 +977,7 @@ fecal_genus.adonis <- adonis(fecal_genus.df ~ date *group + ID ,
 fecal_genus.adonis
 
 #spliced differently
-fecal_genus2.adonis <- adonis(fecal_genus.df ~ date + virus* vaccine  ,
+fecal_genus2.adonis <- adonis2(fecal_genus.df ~ date + virus* vaccine  ,
                               permutations = 5000,
                               data = fecal_master_metadata.df)
 fecal_genus2.adonis
@@ -860,6 +992,12 @@ fecal_genus2.adonis
 
 # ANALYSIS: FECAL GENUS STATS -------------------------------------------
 
+# In the interest of data reduction we will conduct the statistical analyses on
+# genus level taxonomic classification.
+
+# For teaching purposes I will go over various test moving from most simple and
+# less appropriate to move complicated but more appropriate.
+
 #basic linear model
 fit0 <- lm(fecal_genus.df$Clostridium.sensu.stricto.1 ~ date + virus* vaccine,data = fecal_master_metadata.df )
 summary(fit0)
@@ -867,8 +1005,6 @@ summary(fit0)
 #but our data is not normally distributed
 
 hist(fecal_genus.df$Clostridium.sensu.stricto.1)
-hist(fecal_genus.df$Lactobacillus)
-hist(fecal_genus.df$Blautia)
 
 #generalized linear models are sometimes used when normality cannot be assumed
 fit1 <- glm(fecal_genus.df$Clostridium.sensu.stricto.1 ~ date + virus* vaccine,data = fecal_master_metadata.df )
@@ -882,8 +1018,7 @@ summary(fit2)
 # to account for this variation we can use a mixed model which accounts for the
 # variation in response of each individual
 
-library(lme4)
-fit3 <- glmer.nb(fecal_genus.df$Clostridium.sensu.stricto.1 ~ date + virus * vaccine + (1|ID) ,data = fecal_master_metadata.df )
+fit3 <- glmmTMB(fecal_genus.df[,1] ~ date + virus * vaccine + (1|ID),family=nbinom1 ,data = fecal_master_metadata.df )
 summary(fit3)
 
 # But now we have a problem because we only have the fixed effects p-value and
@@ -891,7 +1026,7 @@ summary(fit3)
 # error has already been accounted for. To solve this problem we can use a NULL
 # model which only includes an implicit intercept and the random (mixed) effect
 
-fit3.null <- glmer.nb(fecal_genus.df$Clostridium.sensu.stricto.1 ~ (1|ID) ,data = fecal_master_metadata.df )
+fit3.null <- glmmTMB(fecal_genus.df[,1] ~ factor(date) +  (1|ID), family=nbinom1,data = fecal_master_metadata.df )
 summary(fit3.null)
 
 #if the anova is significant adding those extra terms allows significantly more
@@ -904,24 +1039,244 @@ anova(fit3.null, fit3)
 
 #so to do all the stats we can use a loop and we will cover that later
 
+fecal_nbglm <- NULL
 
-# ANALYSIS: nasal ANALYSIS ------------------------------------------------
+for(i in 1:ncol(fecal_genus.df)){
+#apply(fecal_genus.df,2,function(i){
 
-#Get names for nasal samples
+  index  <- names(fecal_genus.df)[[i]]
+  counts <- fecal_genus.df[[i]]
 
-nasal.names <- rownames(Master_metadata.df[which(Master_metadata.df$Sample_type == "NS"), ])
+  #Null model
+  fecal_nbglm[[index]][["null"]] <- NULL
+  fecal_nbglm[[index]][["ALT"]]  <- NULL
+  fecal_nbglm[[index]][["ANOVA"]] <- NULL
 
+  try(
+  fecal_nbglm[[index]][["null"]] <- glmmTMB(counts ~ date + (1|ID) ,
+                                             family=nbinom1,
+                                             data = fecal_master_metadata.df )
+  )
+  #Alternative model
+  try(
+  fecal_nbglm[[index]][["ALT"]] <- glmmTMB(counts ~ date + virus * vaccine + (1|ID) ,
+                                            family=nbinom1,
+                                            data = fecal_master_metadata.df )
+  )
+
+  # ANOVA test
+  try(
+  fecal_nbglm[[index]][["ANOVA"]] <- anova(fecal_nbglm[[index]][["null"]],
+                                           fecal_nbglm[[index]][["ALT"]])
+  )
+
+}
+
+# Note that many of these test will likely run into convergence errors which will
+# be caught with try() and a NULL value will be passed to the ANOVA element of the
+# Taxa list which will in turn result in NA for ANOVA p value.
+
+
+#Build a data frame with the false discovery rate controlled values
+
+fecal_nbglm.df <- data.frame(aov.pval= unlist(lapply(fecal_nbglm, function(x){x$ANOVA$`Pr(>Chisq)`[2]})),
+                             qval= qvalue::qvalue(unlist(lapply(fecal_nbglm, function(x){x$ANOVA$`Pr(>Chisq)`[2]})))$qvalue )
+
+sig_fecal_genera.names <- rownames(fecal_nbglm.df[which(fecal_nbglm.df$qval < 0.2),])
+
+#make some plots from these taxa
+sig_fecal_genera.df <- fecal_genus.df[,sig_fecal_genera.names]
+
+sig_fecal_genera.df$status <- paste0(fecal_master_metadata.df$virus, "_", fecal_master_metadata.df$vaccine)
+
+plots <- NULL
+my_legend <- NULL
+for(i in seq_along(sig_fecal_genera.names)){
+
+  g <- ggplot(sig_fecal_genera.df, aes_string(x = "status",
+                                y = sig_fecal_genera.names[i]
+                                )) +
+  geom_boxplot(aes(fill = factor(status))) +
+  scale_fill_brewer("Group",
+                    type = "qual",
+                    palette = 2,
+                    direction = 1,
+                    aesthetics = "fill",
+                    labels= c("Control", "Vaccine", "Virus", "Virus+Vaccine")
+                    )+
+  theme(
+    text = element_text(size = 12, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    axis.text.x = element_blank(),
+    axis.ticks.x =  element_blank(),
+    aspect.ratio = 1,
+    #plot.title = element_text(size = 12, hjust = 0.5)
+  ) +
+  xlab("") #+
+  #ylab("")+
+  #ggtitle(sig_fecal_genera.names[i])
+
+  if(i == length(sig_fecal_genera.names)){
+    my_legend <- get_legend(g)
+  }
+  plots[[i]] <- g + theme(legend.position = "none")
+
+}
+
+pdf("figures/sig_genera_feces.pdf", width = 10, height = 10)
+plot_grid(plots[[1]],
+          plots[[2]],
+          plots[[3]],
+          plots[[4]],
+          plots[[5]],
+          plots[[6]],
+          plots[[7]],
+          plots[[8]],
+          legend)
+dev.off()
+# ANALYSIS: NASAL ANALYSIS ------------------------------------------------
+
+# Get names for nasal samples use rarefied names to be consistent between normalized
+# data frames
+
+nasal.names <- rownames(rare_metadata.df[which(rare_metadata.df$Sample_type == "NS"), ])
+
+#make relative abundance data frame
 nasal_seqtab_nochim.relabd <- seqtab_nochim.relabd[nasal.names,]
-nasal_master_metadata.df   <- Master_metadata.df[nasal.names,]
+nasal_seqtab_nochim.relabd <- nasal_seqtab_nochim.relabd[,which(colSums(nasal_seqtab_nochim.relabd) > 0 )]
+
+# make rarefied data frame
+
+nasal_seqtab_nochim.rare <- seqtab_nochim.rare[nasal.names,]
+nasal_seqtab_nochim.rare <- nasal_seqtab_nochim.rare[,which(colSums(nasal_seqtab_nochim.rare) > 0 )]
+
+# make genus data frame
+
+#filter genus
+nasal_genus.df <- pig_phylotype$genus[nasal.names,]
+nasal_genus.df <- nasal_genus.df[,which(colSums(nasal_genus.df) >0)]
+
+#update metadata
+nasal_master_metadata.df <- rare_metadata.df[nasal.names, ]
+
+nasal_master_metadata.df$vaccine <-
+  ifelse(nasal_master_metadata.df$group %in% c("GC", "GB"), 1,0)
+nasal_master_metadata.df$virus <-
+  ifelse(nasal_master_metadata.df$group %in% c("GC", "GD") & nasal_master_metadata.df$date %in% c("5d", "22d"), 1,0)
+nasal_master_metadata.df$combined <- paste0(nasal_master_metadata.df$virus, "_", nasal_master_metadata.df$vaccine)
+
+nasal.5d <- rownames(nasal_master_metadata.df[which(nasal_master_metadata.df$date == "5d"), ])
+nasal.22d <- rownames(nasal_master_metadata.df[which(nasal_master_metadata.df$date == "22d"), ])
+
+nasal_ids.5d  <- paste0(nasal_master_metadata.df[which(nasal_master_metadata.df$date == "5d"),  "ID"], "_5d")
+nasal_ids.22d <- paste0(nasal_master_metadata.df[which(nasal_master_metadata.df$date == "22d"), "ID"], "_22d")
+
+# ANALYSIS: NASAL ALPHA-DIVERSITY --------------------------------------------
+
+nasal.richness <- specnumber(x = nasal_seqtab_nochim.rare,MARGIN = 1 )
+nasal.shannon  <- diversity(nasal_seqtab_nochim.rare,MARGIN = 1)
+
+# Here we will us gaussian glmms to quantify associations between alpha
+# diversity, time, vaccination, and infection. It is likely that we will be under
+# powered so trends in the data will be more important to look at
 
 
-# ANALYSIS: nasal PCA -----------------------------------------------------
+nasal_richness.glmmtmb <- glmmTMB(nasal.richness~ date + vaccine*virus + (1|ID),
+                                  data = nasal_master_metadata.df
+)
 
+nasal_shannon.glmmtmb <- glmmTMB(nasal.shannon~ date + vaccine*virus + (1|ID),
+                                 data = nasal_master_metadata.df
+)
+
+summary(nasal_richness.glmmtmb)
+summary(nasal_shannon.glmmtmb)
+
+
+#richness
+nasal_richness.df <- data.frame(richness = nasal.richness,
+                                group = nasal_master_metadata.df$combined)
+
+nasal_richness.plot <- ggplot(nasal_richness.df, aes(x = group,
+                                                     y = richness,
+                                                     fill = group))+
+  geom_boxplot()+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    axis.text.x = element_blank(),
+    axis.ticks.x =  element_blank(),
+    aspect.ratio = 1,
+    plot.title = element_text(size = 12, hjust = 0.5)
+  )+
+  scale_fill_brewer("",
+                    type = "qual",
+                    palette = 2,
+                    direction = 1,
+                    aesthetics = "fill",
+                    labels= c("Control", "Vaccine", "Virus", "Virus+Vaccine")
+  )+
+  xlab("")+
+  ylab("Richness")
+
+#shannon
+nasal_shannon.df <- data.frame(shannon = nasal.shannon,
+                               group = nasal_master_metadata.df$combined)
+
+nasal_shannon.plot <- ggplot(nasal_shannon.df, aes(x = group,
+                                                   y = shannon,
+                                                   fill = group))+
+  geom_boxplot()+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    axis.text.x = element_blank(),
+    axis.ticks.x =  element_blank(),
+    aspect.ratio = 1,
+    plot.title = element_text(size = 12, hjust = 0.5)
+  )+
+  scale_fill_brewer(
+    type = "qual",
+    palette = 2,
+    direction = 1,
+    aesthetics = "fill",
+    labels= c("Control", "Vaccine", "Virus", "Virus+Vaccine")
+  )+
+  xlab("")+
+  ylab("Shannon")
+
+legend <- get_legend(
+  nasal_richness.plot
+)
+
+pdf("figures/nasal_alpha_diversity.pdf",height = 4, width = 8)
+plot_grid(nasal_richness.plot + theme(legend.position = "none"),
+          nasal_shannon.plot + theme(legend.position = "none"),
+          legend, ncol = 3,rel_widths = c(2,2,1),
+          labels = c("A","B"),
+          label_size = 20
+)
+dev.off()
+
+
+# ANALYSIS: NASAL PCA PANEL PLOTS --------------------------------------------
 
 #make PCA object
-nasal_seqtab_nochim.pca <- prcomp(nasal_seqtab_nochim.relabd,scale. = F, center = T)
+nasal_seqtab_nochim.pca <- prcomp(nasal_seqtab_nochim.rare,scale. = F, center = T)
 
-#get varaince %
+#get variance %
 summary(nasal_seqtab_nochim.pca)
 
 #plot variances in skree plot
@@ -934,7 +1289,7 @@ all(rownames(nasal_seqtab_nochim.pca$x) == rownames(nasal_master_metadata.df))
 nasal_seqtab_nochim_pca.df <- as.data.frame(nasal_seqtab_nochim.pca$x[,1:5])
 
 #add metadata for plotting
-nasal_seqtab_nochim_pca.df$Vaccination_status <- nasal_master_metadata.df$Vaccination_status
+nasal_seqtab_nochim_pca.df$status <- nasal_master_metadata.df$combined
 nasal_seqtab_nochim_pca.df$date <- nasal_master_metadata.df$date
 nasal_seqtab_nochim_pca.df$group <- nasal_master_metadata.df$group
 nasal_seqtab_nochim_pca.df$ID <- nasal_master_metadata.df$ID
@@ -942,30 +1297,1091 @@ nasal_seqtab_nochim_pca.df$ID <- nasal_master_metadata.df$ID
 nasal_seqtab_nochim_pca.plot <- ggplot(data = nasal_seqtab_nochim_pca.df,
                                        aes(x = PC2,
                                            y = PC3,
-                                           color = group,
-                                           shape = date))
+                                           color = status,
+                                           shape = date
+                                           )
+                                           )
+#all
+nasal_seqtab_nochim_pca.plotall <- nasal_seqtab_nochim_pca.plot +
+  geom_point(size = 5)+
+  scale_color_brewer("Group", type = "qual",
+                   palette = 2,
+                   direction = 1,
+                   aesthetics = "colour",
+                   labels= c("Control", "Vaccine", "Virus", "Virus+Vaccine")
+  )+
+  scale_fill_brewer(type = "qual",
+                  palette = 2,
+                  direction = 1,
+                  aesthetics = "fill"
+  ) +
+  theme(
+    text = element_text(size = 20, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5)
+  )+
+  guides(fill = "none") +ggtitle("All")
 
-nasal_seqtab_nochim_pca.plot +
-  geom_point(size = 3)
+
+#0d
+nasal_seqtab_nochim_pca.plot0d <- nasal_seqtab_nochim_pca.plot +
+  geom_point(data = ~ subset(., date == "0d") ,size = 5)+
+  scale_color_brewer("Group", type = "qual",
+                     palette = 2,
+                     direction = 1,
+                     aesthetics = "colour",
+                     labels= c("Control", "Vaccine")
+  )+
+  scale_fill_brewer(type = "qual",
+                    palette = 2,
+                    direction = 1,
+                    aesthetics = "fill"
+  ) +
+  theme(
+    text = element_text(size = 20, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5)
+  )+
+  guides(fill = "none", shape = "none") +ggtitle("Day 0")
+
+#Day 5
+nasal_seqtab_nochim_pca.plot5d <-
+  nasal_seqtab_nochim_pca.plot +
+  geom_point(data = ~ subset(., date == "5d") ,size = 5)+
+  scale_color_brewer("Group", type = "qual",
+                     palette = 2,
+                     direction = 1,
+                     aesthetics = "colour",
+                     labels= c("Control", "Vaccine","Virus", "Virus+Vaccine")
+  )+
+  scale_fill_brewer(type = "qual",
+                    palette = 2,
+                    direction = 1,
+                    aesthetics = "fill"
+  ) +
+  theme(
+    text = element_text(size = 20, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5)
+  )+
+  guides(fill = "none", shape = "none") +ggtitle("Day 5")
+
+#Day 22
+nasal_seqtab_nochim_pca.plot22d <- nasal_seqtab_nochim_pca.plot +
+  geom_point(data = ~ subset(., date == "22d") ,size = 5)+
+  scale_color_brewer("Group", type = "qual",
+                     palette = 2,
+                     direction = 1,
+                     aesthetics = "colour",
+                     labels= c("Control", "Vaccine","Virus", "Virus+Vaccine")
+  )+
+  scale_fill_brewer(type = "qual",
+                    palette = 2,
+                    direction = 1,
+                    aesthetics = "fill"
+  ) +
+  theme(
+    text = element_text(size = 20, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5)
+  )+
+  guides(fill = "none", shape = "none") +ggtitle("Day 22")
 
 
-
-nasal_seqtab_nochim_pca.plot +
-  geom_point(data = ~ subset(., date == "0d") ,size = 3)
-
-nasal_seqtab_nochim_pca.plot +
-  geom_point(data = ~ subset(., date == "5d") ,size = 3)
-
-nasal_seqtab_nochim_pca.plot +
-  geom_point(data = ~ subset(., date == "22d") ,size = 3)
+nasal.legend <- get_legend(nasal_seqtab_nochim_pca.plotall)
 
 
-# ANALYSIS: nasal ADONIS --------------------------------------------------------
+nasal_asv_by_day.plot <-
+plot_grid(nasal_seqtab_nochim_pca.plotall + theme(legend.position = "none"),
+          nasal_seqtab_nochim_pca.plot0d  + theme(legend.position = "none"),
+          nasal_seqtab_nochim_pca.plot5d  + theme(legend.position = "none"),
+          nasal_seqtab_nochim_pca.plot22d + theme(legend.position = "none"),
+          nasal.legend,
+          labels = c("A", "B", "C", "D", ''),
+          label_size = 30, nrow = 2
+)
+
+
+pdf("figures/nasal_asv_pca_plots.pdf", width = 14, height = 14)
+nasal_asv_by_day.plot
+dev.off()
+
+# ANALYSIS: NASAL ADONIS --------------------------------------------------------
 
 set.seed(731)
 
-nasal_seqtab_nochim.adonis <- adonis(nasal_seqtab_nochim.relabd ~  group * date +ID ,
+nasal_seqtab_nochim.adonis <- adonis2(nasal_seqtab_nochim.rare ~  group * date ,
                                      permutations = 5000,
+                                     by = "margin",
                                      data = nasal_master_metadata.df)
 
 nasal_seqtab_nochim.adonis
+
+nasal_seqtab_nochim.adonis2 <- adonis2(nasal_seqtab_nochim.rare ~  date + virus*vaccine  ,
+                                     permutations = 5000,
+                                     by = "margin",
+                                     data = nasal_master_metadata.df)
+nasal_seqtab_nochim.adonis2
+
+
+# ANALYSIS: NASAL MICROBIOME:PBMC CORRELATIONS ---------------------------
+
+# for this analysis it would be best to have a reduced set of taxa to correlate
+# with these metadata because many of these taxa might have very low prevalence
+
+nasal_genus_corr.df <- nasal_genus.df[,which(colMeans(nasal_genus.df) > 10)]
+
+#serum_metadata.df
+#lung_metadata.df
+#pbmc_metadata.df
+
+#nasal_ids.22d nasal_ids.5d nasal.22d nasal.5d
+
+#filter and reorder
+pbmc_metadata.df <- pbmc_metadata.df[which(pbmc_metadata.df$combined_id %in% nasal_ids.22d),]
+rownames(pbmc_metadata.df) <- pbmc_metadata.df$combined_id
+pbmc_metadata.df <- pbmc_metadata.df[nasal_ids.22d,]
+
+pbmc_genus.df <- nasal_genus_corr.df[which(rownames(nasal_genus_corr.df) %in% nasal.22d),]
+pbmc_genus.df <- pbmc_genus.df[,which(colSums(pbmc_genus.df) > 0)]
+
+#any sig corrs ?
+pbmc.pvals <- NULL
+
+for(i in 6:(ncol(pbmc_metadata.df)-1)){
+  for(j in colnames(pbmc_genus.df)){
+    #x <- cor.test(pbmc_metadata.df[,i], pbmc_genus.df[,j], method = "s")$p.value
+    x <- cor.test(pbmc_metadata.df[,i], pbmc_genus.df[,j], method = "p")$p.value
+    pbmc.pvals <- c(pbmc.pvals, x)
+  }
+}
+
+hist(qvalue::qvalue(pbmc.pvals)$qvalues)
+
+
+# ANALYSIS: NASAL MICROBIOME:LUNG CORRELATIONS ---------------------------
+
+lung_metadata.df <- lung_metadata.df[which(lung_metadata.df$combined_id %in% nasal_ids.5d),]
+rownames(lung_metadata.df) <- lung_metadata.df$combined_id
+lung_metadata.df <- lung_metadata.df[nasal_ids.5d,]
+
+lung_genus.df <- nasal_genus_corr.df[which(rownames(nasal_genus_corr.df) %in% nasal.5d),]
+lung_genus.df <- lung_genus.df[,which(colSums(lung_genus.df) > 0)]
+
+#any sig corrs ?
+
+#make a series of vectors that we can later bind together
+lung.pvals <- NULL
+lung.est <- NULL
+lung.stat <- NULL
+lung.host <- NULL
+lung.taxa <- NULL
+
+for(i in 6:(ncol(lung_metadata.df)-1)){
+  for(j in colnames(lung_genus.df)){
+    pval <- cor.test(lung_metadata.df[,i], lung_genus.df[,j], method = "s")$p.value
+    est  <- cor.test(lung_metadata.df[,i], lung_genus.df[,j], method = "s")$estimate
+    stat <- cor.test(lung_metadata.df[,i], lung_genus.df[,j], method = "s")$statistic
+    host <- colnames(lung_metadata.df)[i]
+    taxa <- j
+    lung.pvals <- c(lung.pvals, pval)
+    lung.est   <- c(lung.est, est)
+    lung.stat  <- c(lung.stat, stat)
+    lung.host  <- c(lung.host, host)
+    lung.taxa  <- c(lung.taxa,taxa)
+  }
+}
+
+
+lung.corrs <- data.frame(
+  pvals = lung.pvals,
+  est  = lung.est,
+  stat = lung.stat,
+  host = lung.host,
+  taxa = lung.taxa,
+  qval = qvalue::qvalue(lung.pvals)$qvalues
+)
+
+# There are a few correlations that pass fdr control of 0.2, which is impressive
+# because we had so few samples
+
+# ANALYSIS: NASAL MICROBIOME:SERUM CORRELATIONS ---------------------------
+
+serum_metadata.df <- serum_metadata.df[which(serum_metadata.df$combined_id %in% c(nasal_ids.5d, nasal_ids.22d)),]
+rownames(serum_metadata.df) <- serum_metadata.df$combined_id
+serum_metadata.df <- serum_metadata.df[c(nasal_ids.5d, nasal_ids.22d),]
+
+serum_genus.df <- nasal_genus_corr.df[which(rownames(nasal_genus_corr.df) %in% c(nasal.5d,nasal.22d)),]
+serum_genus.df <- serum_genus.df[c(nasal.5d,nasal.22d), ]
+serum_genus.df <- serum_genus.df[,which(colSums(serum_genus.df) > 0)]
+
+
+serum_metadata.df5d <- serum_metadata.df[1:6,]
+serum_genus.df5d <- serum_genus.df[1:6,]
+
+serum_metadata.df22d <- serum_metadata.df[7:14,]
+serum_genus.df22d <- serum_genus.df[7:14,]
+
+#any sig corrs ?
+
+#all
+serum.pvals <- NULL
+serum.est <- NULL
+serum.stat <- NULL
+serum.host <- NULL
+serum.taxa <- NULL
+
+for(i in 6:(ncol(serum_metadata.df)-1)){
+  for(j in colnames(serum_genus.df)){
+    pval <- cor.test(serum_metadata.df[,i], serum_genus.df[,j], method = "s")$p.value
+    est  <- cor.test(serum_metadata.df[,i], serum_genus.df[,j], method = "s")$estimate
+    stat <- cor.test(serum_metadata.df[,i], serum_genus.df[,j], method = "s")$statistic
+    host <- colnames(serum_metadata.df)[i]
+    taxa <- j
+    serum.pvals <- c(serum.pvals, pval)
+    serum.est   <- c(serum.est, est)
+    serum.stat  <- c(serum.stat, stat)
+    serum.host  <- c(serum.host, host)
+    serum.taxa  <- c(serum.taxa,taxa)
+  }
+}
+
+serum.corrs <- data.frame(
+  pvals = serum.pvals,
+  est  = serum.est,
+  stat = serum.stat,
+  host = serum.host,
+  taxa = serum.taxa,
+  qval = qvalue::qvalue(serum.pvals)$qvalues
+)
+
+#nothing here but what if we split?
+
+#5d
+#make a series of vectors that we can later bind together
+serum.pvals <- NULL
+serum.est <- NULL
+serum.stat <- NULL
+serum.host <- NULL
+serum.taxa <- NULL
+
+for(i in 6:(ncol(serum_metadata.df5d)-1)){
+  for(j in colnames(serum_genus.df5d)){
+    pval <- cor.test(serum_metadata.df5d[,i], serum_genus.df5d[,j], method = "s")$p.value
+    est  <- cor.test(serum_metadata.df5d[,i], serum_genus.df5d[,j], method = "s")$estimate
+    stat <- cor.test(serum_metadata.df5d[,i], serum_genus.df5d[,j], method = "s")$statistic
+    host <- colnames(serum_metadata.df5d)[i]
+    taxa <- j
+    serum.pvals <- c(serum.pvals, pval)
+    serum.est   <- c(serum.est, est)
+    serum.stat  <- c(serum.stat, stat)
+    serum.host  <- c(serum.host, host)
+    serum.taxa  <- c(serum.taxa,taxa)
+  }
+}
+
+serum5d.corrs <- data.frame(
+  pvals = serum.pvals,
+  est  = serum.est,
+  stat = serum.stat,
+  host = serum.host,
+  taxa = serum.taxa,
+  qval = qvalue::qvalue(serum.pvals)$qvalues
+)
+
+
+#now 22d
+
+serum.pvals <- NULL
+serum.est <- NULL
+serum.stat <- NULL
+serum.host <- NULL
+serum.taxa <- NULL
+
+for(i in 6:(ncol(serum_metadata.df22d)-1)){
+  for(j in colnames(serum_genus.df22d)){
+    pval <- cor.test(serum_metadata.df22d[,i], serum_genus.df22d[,j], method = "s")$p.value
+    est  <- cor.test(serum_metadata.df22d[,i], serum_genus.df22d[,j], method = "s")$estimate
+    stat <- cor.test(serum_metadata.df22d[,i], serum_genus.df22d[,j], method = "s")$statistic
+    host <- colnames(serum_metadata.df22d)[i]
+    taxa <- j
+    serum.pvals <- c(serum.pvals, pval)
+    serum.est   <- c(serum.est, est)
+    serum.stat  <- c(serum.stat, stat)
+    serum.host  <- c(serum.host, host)
+    serum.taxa  <- c(serum.taxa,taxa)
+  }
+}
+
+serum22d.corrs <- data.frame(
+  pvals = serum.pvals,
+  est  = serum.est,
+  stat = serum.stat,
+  host = serum.host,
+  taxa = serum.taxa,
+  qval = qvalue::qvalue(serum.pvals)$qvalues
+)
+
+#probably not powered for this, but there are some interesting associations here
+#a larger sampling would potentially
+
+
+# ANALYSIS: NASAL MICROBIOME CORR PLOTS -----------------------------------
+
+lacto_infa.plot <- ggplot(data = data.frame(x1 = lung_metadata.df$ifnapcr,
+                                            y1 = lung_genus.df$Lactobacillus),
+                          aes(x = x1, y = y1)
+)+
+  geom_point(size = 3)+
+  geom_smooth(method = "lm",se = FALSE, color = "black")+
+  annotate("text", x=4, y=100, label= "-0.93", size =10)+
+  xlab("IFNa (pcr)")+
+  ylab("Lactobacillus")+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+  )
+
+# terrisporobacter
+terrisporobacter_infa.plot <- ggplot(data = data.frame(x1 = lung_metadata.df$ifnapcr,
+                                            y1 = lung_genus.df$Terrisporobacter),
+                          aes(x = x1, y = y1)
+)+
+  geom_point(size = 3)+
+  geom_smooth(method = "lm",se = FALSE, color = "black")+
+  annotate("text", x=4, y=300, label= "-0.94", size =10)+
+  xlab("IFNa (pcr)")+
+  ylab("Terrisporobacter")+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+  )
+
+
+#Turicibacter
+
+turicibacter_infa.plot <- ggplot(data = data.frame(x1 = lung_metadata.df$ifnapcr,
+                                                       y1 = lung_genus.df$Turicibacter),
+                                     aes(x = x1, y = y1)
+)+
+  geom_point(size = 3)+
+  geom_smooth(method = "lm",se = FALSE, color = "black")+
+  annotate("text", x=4, y=300, label= "-0.94", size =10)+
+  xlab("IFNa (pcr)")+
+  ylab("Turicibacter")+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+  )
+
+#Romboutsia
+
+romboutsia_infa.plot <- ggplot(data = data.frame(x1 = lung_metadata.df$ifnapcr,
+                                                   y1 = lung_genus.df$Romboutsia),
+                                 aes(x = x1, y = y1)
+)+
+  geom_point(size = 3)+
+  geom_smooth(method = "lm",se = FALSE, color = "black")+
+  annotate("text", x=4, y=300, label= "-0.94", size =10)+
+  xlab("IFNa (pcr)")+
+  ylab("Romboutsia")+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+  )
+
+#Cellulosilyticum
+
+
+cellulosilyticum_infa.plot <- ggplot(data = data.frame(x1 = lung_metadata.df$ifnapcr,
+                                                 y1 = lung_genus.df$Cellulosilyticum),
+                               aes(x = x1, y = y1)
+)+
+  geom_point(size = 3)+
+  geom_smooth(method = "lm",se = FALSE, color = "black")+
+  annotate("text", x=4, y=150, label= "-0.93", size =10)+
+  xlab("IFNa (pcr)")+
+  ylab("Cellulosilyticum")+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+  )
+
+
+
+
+pdf("figures/nasal_genus_host_corr_plots.pdf", width = 14, height = 14)
+plot_grid(lacto_infa.plot,
+          terrisporobacter_infa.plot,
+          turicibacter_infa.plot,
+          romboutsia_infa.plot,
+          cellulosilyticum_infa.plot,
+          labels = c("A", "B", "C", "D", 'E'),
+          label_size = 30, nrow = 2)
+dev.off()
+
+
+
+# ANALYSIS: PLACENTA ANALYSIS ---------------------------------------------
+
+# Get names for placenta samples use rarefied names to be consistent between normalized
+# data frames
+
+placenta.names <- rownames(rare_metadata.df[which(rare_metadata.df$Sample_type == "Pla"), ])
+
+#make relative abundance data frame
+placenta_seqtab_nochim.relabd <- seqtab_nochim.relabd[placenta.names,]
+placenta_seqtab_nochim.relabd <- placenta_seqtab_nochim.relabd[,which(colSums(placenta_seqtab_nochim.relabd) > 0 )]
+
+# make rarefied data frame
+
+placenta_seqtab_nochim.rare <- seqtab_nochim.rare[placenta.names,]
+placenta_seqtab_nochim.rare <- placenta_seqtab_nochim.rare[,which(colSums(placenta_seqtab_nochim.rare) > 0 )]
+
+# make genus data frame
+
+#filter genus
+placenta_genus.df <- pig_phylotype$genus[placenta.names,]
+placenta_genus.df <- placenta_genus.df[,which(colSums(placenta_genus.df) >0)]
+
+#update metadata
+placenta_master_metadata.df <- rare_metadata.df[placenta.names, ]
+
+
+placenta_master_metadata.df$virus <-
+  ifelse(placenta_master_metadata.df$group == "GD" , 1,0)
+
+placenta.5d <- rownames(placenta_master_metadata.df[which(placenta_master_metadata.df$date == "5d"), ])
+placenta.22d <- rownames(placenta_master_metadata.df[which(placenta_master_metadata.df$date == "22d"), ])
+
+placenta_ids.5d  <- paste0(placenta_master_metadata.df[which(placenta_master_metadata.df$date == "5d"),  "ID"], "_5d")
+placenta_ids.22d <- paste0(placenta_master_metadata.df[which(placenta_master_metadata.df$date == "22d"), "ID"], "_22d")
+
+# ANALYSIS: PLACENTA ALPHA-DIVERSITY --------------------------------------------
+
+placenta.richness <- specnumber(x = placenta_seqtab_nochim.rare,MARGIN = 1 )
+placenta.shannon  <- diversity(placenta_seqtab_nochim.rare,MARGIN = 1)
+
+#use lm because the pig IDS are different
+placenta_richness.lm <- glm(placenta.richness~ date + virus ,
+                                     data = placenta_master_metadata.df
+)
+
+placenta_shannon.lm <- lm(placenta.shannon~ date + virus,
+                                    data = placenta_master_metadata.df
+)
+
+summary(placenta_richness.lm)
+summary(placenta_shannon.lm)
+
+
+#richness
+placenta_richness.df <- data.frame(richness = placenta.richness,
+                                   group = placenta_master_metadata.df$group,
+                                   date  = placenta_master_metadata.df$date
+                                  )
+
+placenta_richness.plot <-
+  ggplot(placenta_richness.df, aes(x = group,
+                                   y = richness,
+                                   color = group
+                                   )
+         )+
+  geom_point(size = 7)+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    axis.text.x = element_blank(),
+    axis.ticks.x =  element_blank(),
+    aspect.ratio = 1,
+    plot.title = element_text(size = 12, hjust = 0.5),
+    strip.background = element_blank()
+  )+
+  scale_color_brewer("",
+                    type = "qual",
+                    palette = 2,
+                    direction = 1,
+                    aesthetics = "color",
+                    labels= c("Control",  "Virus")
+  )+
+  xlab("")+
+  ylab("Richness")+
+  facet_grid(.~factor(date, levels = c("5d", "22d")),
+             labeller = as_labeller(  c("5d" = "Day 5", "22d" = "Day 22")))
+
+#shannon
+placenta_shannon.df <- data.frame(shannon = placenta.shannon,
+                                  group = placenta_master_metadata.df$group,
+                                  date = placenta_master_metadata.df$date)
+
+placenta_shannon.plot <- ggplot(placenta_shannon.df, aes(x = group,
+                                                         y = shannon,
+                                                         color = group))+
+
+  geom_point(size = 7)+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    axis.text.x = element_blank(),
+    axis.ticks.x =  element_blank(),
+    aspect.ratio = 1,
+    plot.title = element_text(size = 12, hjust = 0.5),
+    strip.background = element_blank()
+  )+
+  scale_color_brewer("",
+                     type = "qual",
+                     palette = 2,
+                     direction = 1,
+                     aesthetics = "color",
+                     labels= c("Control",  "Virus")
+  )+
+  xlab("")+
+  ylab("Shannon")+
+  facet_grid(.~factor(date, levels = c("5d", "22d")),
+             labeller = as_labeller(  c("5d" = "Day 5", "22d" = "Day 22")))
+
+
+pdf("figures/placenta_alpha_diversity.pdf",height = 7, width = 7)
+plot_grid(placenta_richness.plot ,
+          placenta_shannon.plot,
+          labels = c("A","B"),
+          label_size = 20,
+          nrow =2
+)
+dev.off()
+
+
+# ANALYSIS: PLACENTA PCA --------------------------------------------------
+
+#make PCA object
+placenta_seqtab_nochim.pca <- prcomp(placenta_seqtab_nochim.rare,scale. = F, center = T)
+
+#get variance %
+summary(placenta_seqtab_nochim.pca)
+
+#plot variances in skree plot
+plot(placenta_seqtab_nochim.pca)
+
+#check that rownames are the same
+all(rownames(placenta_seqtab_nochim.pca$x) == rownames(placenta_master_metadata.df))
+
+#make a PCA data frame
+placenta_seqtab_nochim_pca.df <- as.data.frame(placenta_seqtab_nochim.pca$x[,1:5])
+
+#add metadata for plotting
+placenta_seqtab_nochim_pca.df$date <- placenta_master_metadata.df$date
+placenta_seqtab_nochim_pca.df$group <- placenta_master_metadata.df$group
+
+placenta_seqtab_nochim_pca.plot <- ggplot(data = placenta_seqtab_nochim_pca.df,
+                                          aes(x = PC1,
+                                              y = PC2,
+                                              color = group,
+                                              shape = date
+                                          )
+)
+
+placenta_pca.plot <-  placenta_seqtab_nochim_pca.plot +
+  geom_point(size = 7)+
+  scale_shape_discrete("Date")+
+  scale_color_brewer("Group", type = "qual",
+                     palette = 2,
+                     direction = 1,
+                     aesthetics = "colour",
+                     labels= c("Control",  "Virus")
+  )+
+  theme(
+    text = element_text(size = 20, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5)
+  )
+
+pdf("figures/placenta_pca_plot.pdf", width = 7, height = 7)
+placenta_pca.plot
+dev.off()
+
+# ANALYSIS: PLACENTA ADONIS --------------------------------------------------------
+
+set.seed(731)
+
+placenta_seqtab_nochim.adonis2 <- adonis2(placenta_seqtab_nochim.rare ~  date + virus,
+                                       permutations = 5000,
+                                       by = "margin",
+                                       data = placenta_master_metadata.df)
+placenta_seqtab_nochim.adonis2
+
+# ANALYSIS: PLACENTA MICROBIOME:SERUM CORRELATIONS ---------------------------
+
+#make placenta correlation data frame
+placenta_genus_corr.df <- placenta_genus.df[,which(colMeans(placenta_genus.df) > 10)]
+
+#reset the changes to the metadata
+serum_metadata.df <- add_metadata.df[which(add_metadata.df$Sample_type == "Serum"),c(1:5,16:29)]
+pbmc_metadata.df <- add_metadata.df[which(add_metadata.df$Sample_type == "PBMC"),c(1:5,10:15,29)]
+
+#subset
+serum_metadata.df <- serum_metadata.df[which(serum_metadata.df$combined_id %in% c(placenta_ids.5d, placenta_ids.22d)),]
+rownames(serum_metadata.df) <- serum_metadata.df$combined_id
+serum_metadata.df <- serum_metadata.df[c(placenta_ids.5d, placenta_ids.22d),]
+
+#subset genus data frame
+serum_genus.df <- placenta_genus_corr.df[which(rownames(placenta_genus_corr.df) %in% c(placenta.5d,placenta.22d)),]
+serum_genus.df <- serum_genus.df[c(placenta.5d,placenta.22d), ]
+serum_genus.df <- serum_genus.df[,which(colSums(serum_genus.df) > 0)]
+
+
+#any sig corrs ?
+
+#all
+serum.pvals <- NULL
+serum.est <- NULL
+serum.stat <- NULL
+serum.host <- NULL
+serum.taxa <- NULL
+
+for(i in 6:(ncol(serum_metadata.df)-1)){
+  for(j in colnames(serum_genus.df)){
+    pval <- cor.test(serum_metadata.df[,i], serum_genus.df[,j], method = "s")$p.value
+    est  <- cor.test(serum_metadata.df[,i], serum_genus.df[,j], method = "s")$estimate
+    stat <- cor.test(serum_metadata.df[,i], serum_genus.df[,j], method = "s")$statistic
+    host <- colnames(serum_metadata.df)[i]
+    taxa <- j
+    serum.pvals <- c(serum.pvals, pval)
+    serum.est   <- c(serum.est, est)
+    serum.stat  <- c(serum.stat, stat)
+    serum.host  <- c(serum.host, host)
+    serum.taxa  <- c(serum.taxa,taxa)
+  }
+}
+
+placenta_serum.corrs <- data.frame(
+  pvals = serum.pvals,
+  est  = serum.est,
+  stat = serum.stat,
+  host = serum.host,
+  taxa = serum.taxa,
+  qval = qvalue::qvalue(serum.pvals)$qvalues
+)
+
+#plot of sig
+romboutsia_ifng.plot <- ggplot(data = data.frame(x1 = serum_metadata.df$IFN.g,
+                                            y1 = serum_genus.df$Romboutsia),
+                          aes(x = x1, y = y1)
+)+
+  geom_point(size = 3)+
+  geom_smooth(method = "lm",se = FALSE, color = "black")+
+  annotate("text", x=7, y=300, label= "-0.95", size =6)+
+  xlab("IFNg")+
+  ylab("Romboutsia")+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+  )
+
+# ANALYSIS: PLACENTA MICROBIOME:PBMC CORRELATIONS ---------------------------
+
+placenta_genus_corr.df <- placenta_genus.df[,which(colMeans(placenta_genus.df) > 10)]
+
+#filter and reorder
+pbmc_metadata.df <- pbmc_metadata.df[which(pbmc_metadata.df$combined_id %in% c(placenta_ids.5d, placenta_ids.22d)),]
+rownames(pbmc_metadata.df) <- pbmc_metadata.df$combined_id
+pbmc_metadata.df <- pbmc_metadata.df[c(placenta_ids.5d, placenta_ids.22d),]
+pbmc_metadata.df <- na.omit(pbmc_metadata.df)
+
+
+pbmc_genus.df <- placenta_genus_corr.df[which(rownames(placenta_genus_corr.df) %in% c("Pla_GA_120_GTGCCATAATCG_L001",
+                                                                                      "Pla_GA_122_ACTCTTACTTAG_L001",
+                                                                                      "Pla_GD_143_GTTCATTAAACT_L001",
+                                                                                      "Pla_GD_144_TTCGATGCCGCA_L001"
+                                                                                      )
+                                                                                      ),
+                                        ]
+
+pbmc_genus.df <- pbmc_genus.df[,which(colSums(pbmc_genus.df) > 0)]
+
+#any sig corrs ?
+pbmc.pvals <- NULL
+pbmc.est <- NULL
+pbmc.stat <- NULL
+pbmc.host <- NULL
+pbmc.taxa <- NULL
+
+for(i in 6:(ncol(pbmc_metadata.df)-1)){
+  for(j in colnames(pbmc_genus.df)){
+    pval <- cor.test(pbmc_metadata.df[,i], pbmc_genus.df[,j], method = "s")$p.value
+    est  <- cor.test(pbmc_metadata.df[,i], pbmc_genus.df[,j], method = "s")$estimate
+    stat <- cor.test(pbmc_metadata.df[,i], pbmc_genus.df[,j], method = "s")$statistic
+    host <- colnames(pbmc_metadata.df)[i]
+    taxa <- j
+    pbmc.pvals <- c(pbmc.pvals, pval)
+    pbmc.est   <- c(pbmc.est, est)
+    pbmc.stat  <- c(pbmc.stat, stat)
+    pbmc.host  <- c(pbmc.host, host)
+    pbmc.taxa  <- c(pbmc.taxa,taxa)
+  }
+}
+
+placenta_pbmc.corrs <- data.frame(
+  pvals = pbmc.pvals,
+  est  = pbmc.est,
+  stat = pbmc.stat,
+  host = pbmc.host,
+  taxa = pbmc.taxa,
+  qval = qvalue::qvalue(pbmc.pvals)$qvalues
+)
+
+#Oscillospira
+oscillospira_cd8.plot <- ggplot(data = data.frame(x1 = pbmc_metadata.df$cd8illinois,
+                                                 y1 = pbmc_genus.df$Oscillospira),
+                               aes(x = x1, y = y1)
+)+
+  geom_point(size = 3)+
+  geom_smooth(method = "lm",se = FALSE, color = "black")+
+  annotate("text", x=1, y=20, label= "1.00", size =6)+
+  xlab("CD8(Illinois)")+
+  ylab("Oscillospira")+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+  )
+
+#Succinivibrio
+succinivibrio_cd8.plot <- ggplot(data = data.frame(x1 = pbmc_metadata.df$cd8illinois,
+                                                  y1 = pbmc_genus.df$Succinivibrio),
+                                aes(x = x1, y = y1)
+)+
+  geom_point(size = 3)+
+  geom_smooth(method = "lm",se = FALSE, color = "black")+
+  annotate("text", x=1, y=70, label= "1.00", size =6)+
+  xlab("CD8(Illinois)")+
+  ylab("Succinivibrio")+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+  )
+
+
+#dgA.11.gut.group
+dga_cd8.plot <- ggplot(data = data.frame(x1 = pbmc_metadata.df$cd8illinois,
+                                                   y1 = pbmc_genus.df$dgA.11.gut.group),
+                                 aes(x = x1, y = y1)
+)+
+  geom_point(size = 3)+
+  geom_smooth(method = "lm",se = FALSE, color = "black")+
+  annotate("text", x=1, y=120, label= "1.00", size =6)+
+  xlab("CD8(Illinois)")+
+  ylab("dgA.11.gut.group")+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+  )
+
+#Parabacteroides
+parabacteroides_cd8.plot <- ggplot(data = data.frame(x1 = pbmc_metadata.df$cd8illinois,
+                                         y1 = pbmc_genus.df$Parabacteroides),
+                       aes(x = x1, y = y1)
+)+
+  geom_point(size = 3)+
+  geom_smooth(method = "lm",se = FALSE, color = "black")+
+  annotate("text", x=1, y=35, label= "1.00", size =6)+
+  xlab("CD8(Illinois)")+
+  ylab("Parabacteroides")+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+  )
+
+
+# ANALYSIS: PLACENTA MICROBIOME:HOST CORR PANEL PLOTS ---------------------
+
+pdf("figures/placenta_corrs.pdf")
+plot_grid(oscillospira_cd8.plot,
+          succinivibrio_cd8.plot,
+          dga_cd8.plot,
+          parabacteroides_cd8.plot,
+          romboutsia_ifng.plot,
+          labels = "AUTO",label_size = 20)
+dev.off()
+
+
+
+# ANALYSIS: COMMUNITY BARPLOTS --------------------------------------------
+
+
+fecal_bar_genus.df <- sweep(fecal_genus.df,
+                            MARGIN  =1,
+                            rowSums(fecal_genus.df),
+                            "/"
+                            )
+
+nasal_bar_genus.df <- sweep(nasal_genus.df,
+                            MARGIN  =1,
+                            rowSums(nasal_genus.df),
+                            "/"
+)
+
+placenta_bar_genus.df <- sweep(placenta_genus.df,
+                            MARGIN  =1,
+                            rowSums(placenta_genus.df),
+                            "/"
+)
+
+#grab the top ten taxa
+fecal.keeps    <- names(sort(colMeans(fecal_bar_genus.df), decreasing = T))[1:10]
+nasal.keeps    <- names(sort(colMeans(nasal_bar_genus.df), decreasing = T))[1:10]
+placenta.keeps <- names(sort(colMeans(placenta_bar_genus.df), decreasing = T))[1:10]
+
+#filter data frame so only includes these top ten taxa
+fecal_bar_genus.df    <- fecal_bar_genus.df[,fecal.keeps]
+nasal_bar_genus.df    <- nasal_bar_genus.df[,nasal.keeps]
+placenta_bar_genus.df <- placenta_bar_genus.df[,placenta.keeps]
+
+#add an other category so everything adds to 1
+
+
+fecal_bar_genus.df$other    <- 1 - rowSums(fecal_bar_genus.df)
+nasal_bar_genus.df$other    <- 1 - rowSums(nasal_bar_genus.df)
+placenta_bar_genus.df$other <- 1 - rowSums(placenta_bar_genus.df)
+
+
+#add some metadata
+fecal_bar_genus.df$id <- fecal_master_metadata.df$ID
+fecal_bar_genus.df$virus <- fecal_master_metadata.df$virus
+fecal_bar_genus.df$vaccine <- fecal_master_metadata.df$vaccine
+fecal_bar_genus.df$date <- fecal_master_metadata.df$date
+fecal_bar_genus.df$group <- fecal_master_metadata.df$group
+
+#need to changes the genus df into long format for ggplot to play nice with it
+fecal_bar_genus.melt <- melt(fecal_bar_genus.df,
+                             id.vars = c("id", "virus", "vaccine", "group","date"))
+
+fecal_bar_genus.plot <- ggplot(fecal_bar_genus.melt,
+                                aes(x = factor(id),
+                                    y = value,
+                                    fill = variable))
+
+
+fecal_bar_genus.plot <-
+  fecal_bar_genus.plot+
+  geom_col()+
+  ylab("Proportional Genus Abundance")+
+  xlab("")+
+  scale_y_continuous(expand = c(0,0))+
+  scale_fill_brewer("Genus", type = "qual",
+                    palette = 3,
+                    direction = 1,
+                    aesthetics = "fill"
+  ) +
+  facet_grid(.~date,
+             scales = "free_x",
+             labeller = as_labeller(c("0d"  = "Day 0",
+                                      "35d" = "Day 35",
+                                      "45d" = "Day 45")
+                                      )
+             )+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    axis.text.x = element_blank(),
+    axis.ticks.x =element_blank(),
+    #aspect.ratio = 1,
+    strip.background = element_blank()
+  )
+
+pdf("figures/fecal_genus_abudance_barplots.pdf", width = 10 )
+fecal_bar_genus.plot
+dev.off()
+
+#nasal
+
+
+#add some metadata
+nasal_bar_genus.df$id <- nasal_master_metadata.df$ID
+nasal_bar_genus.df$virus <- nasal_master_metadata.df$virus
+nasal_bar_genus.df$vaccine <- nasal_master_metadata.df$vaccine
+nasal_bar_genus.df$date <- nasal_master_metadata.df$date
+nasal_bar_genus.df$group <- nasal_master_metadata.df$group
+
+#need to changes the genus df into long format for ggplot to play nice with it
+nasal_bar_genus.melt <- melt(nasal_bar_genus.df,
+                             id.vars = c("id", "virus", "vaccine", "group","date"))
+
+nasal_bar_genus.plot <- ggplot(nasal_bar_genus.melt,
+                               aes(x = factor(id),
+                                   y = value,
+                                   fill = variable))
+
+
+nasal_bar_genus.plot <-
+  nasal_bar_genus.plot+
+  geom_col()+
+  ylab("Proportional Genus Abundance")+
+  xlab("")+
+  scale_y_continuous(expand = c(0,0))+
+  scale_fill_brewer("Genus", type = "qual",
+                    palette = 3,
+                    direction = 1,
+                    aesthetics = "fill"
+  ) +
+  facet_grid(.~factor(date,levels = c("0d", "5d", "22d")),
+             scales = "free_x",
+             labeller = as_labeller(c("0d"  = "Day 0",
+                                      "5d"  = "Day 5",
+                                      "22d" = "Day 22")
+             )
+  )+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    axis.text.x = element_blank(),
+    axis.ticks.x =element_blank(),
+    #aspect.ratio = 1,
+    strip.background = element_blank()
+  )
+
+pdf("figures/nasal_genus_abudance_barplots.pdf", width = 10 )
+nasal_bar_genus.plot
+dev.off()
+
+#placenta
+
+#add some metadata
+placenta_bar_genus.df$id <- placenta_master_metadata.df$ID
+placenta_bar_genus.df$virus <- placenta_master_metadata.df$virus
+placenta_bar_genus.df$date <- placenta_master_metadata.df$date
+placenta_bar_genus.df$group <- placenta_master_metadata.df$group
+
+#need to changes the genus df into long format for ggplot to play nice with it
+placenta_bar_genus.melt <- melt(placenta_bar_genus.df,
+                                id.vars = c("id", "virus", "group","date"))
+
+placenta_bar_genus.plot <- ggplot(placenta_bar_genus.melt,
+                                  aes(x = factor(id),
+                                      y = value,
+                                      fill = variable))
+
+
+placenta_bar_genus.plot <-
+  placenta_bar_genus.plot+
+  geom_col()+
+  ylab("Proportional Genus Abundance")+
+  xlab("")+
+  scale_y_continuous(expand = c(0,0))+
+  scale_fill_brewer("Genus", type = "qual",
+                    palette = 3,
+                    direction = 1,
+                    aesthetics = "fill"
+  ) +
+  facet_grid(.~factor(date, levels = c("5d", "22d")),
+             scales = "free_x",
+             labeller = as_labeller(c("5d"  = "Day 5",
+                                      "22d" = "Day 22"
+                                      )
+             )
+  )+
+  theme(
+    text = element_text(size = 16, colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    axis.text.x = element_blank(),
+    axis.ticks.x =element_blank(),
+    #aspect.ratio = 1,
+    strip.background = element_blank()
+  )
+
+pdf("figures/placenta_genus_abudance_barplots.pdf", width = 10 )
+placenta_bar_genus.plot
+dev.off()
