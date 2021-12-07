@@ -251,6 +251,16 @@ serum_metadata.df <- add_metadata.df[which(add_metadata.df$Sample_type == "Serum
 lung_metadata.df <- add_metadata.df[which(add_metadata.df$Sample_type == "Lung"),c(1:9, 29)]
 pbmc_metadata.df <- add_metadata.df[which(add_metadata.df$Sample_type == "PBMC"),c(1:5,10:15,29)]
 
+fecal_add_metadata <- read.table("/Users/cgaulke/Documents/research/fang_virus_colab/data/additionaLfecal_metadata.txt",
+                                 sep = "\t",
+                                 header = T,
+                                 row.names = 1)
+
+fecal_add_metadata <- fecal_add_metadata[which(fecal_add_metadata$date == "45d"),]
+fecal_add_metadata <- fecal_add_metadata[1:18,] #remove the all NA samples
+
+fecal_add_metadata_cells <- na.omit(fecal_add_metadata)
+
 
 # DATA: MAKE SEQ DICTIONARY -----------------------------------------------
 
@@ -1138,6 +1148,51 @@ plot_grid(plots[[1]],
           plots[[8]],
           legend)
 dev.off()
+
+
+# ANALYSIS: FECAL HOST CORRS ----------------------------------------------
+
+fecal_corrs.genus <- fecal_genus.df[which(rownames(fecal_genus.df) %in% rownames(fecal_add_metadata)),]
+#fecal_corrs.genus <- fecal_corrs.genus[,which(colSums(fecal_corrs.genus) > 0)]
+fecal_corrs.genus <- fecal_corrs.genus[,apply(fecal_corrs.genus,2, function(x){sum(x>0) > length(x)*.33})]
+
+fecal.pvals <- NULL
+fecal.est <- NULL
+fecal.stat <- NULL
+fecal.host <- NULL
+fecal.taxa <- NULL
+
+#just be aware that this is an inefficient way of running this loop but with
+# such limited data it is fine.
+
+for(i in 8:(ncol(fecal_add_metadata))){
+  for(j in colnames(fecal_corrs.genus)){
+    pval <- cor.test(fecal_add_metadata[,i], fecal_corrs.genus[,j], method = "s")$p.value
+    est  <- cor.test(fecal_add_metadata[,i], fecal_corrs.genus[,j], method = "s")$estimate
+    stat <- cor.test(fecal_add_metadata[,i], fecal_corrs.genus[,j], method = "s")$statistic
+    host <- colnames(fecal_add_metadata)[i]
+    taxa <- j
+    fecal.pvals <- c(fecal.pvals, pval)
+    fecal.est   <- c(fecal.est, est)
+    fecal.stat  <- c(fecal.stat, stat)
+    fecal.host  <- c(fecal.host, host)
+    fecal.taxa  <- c(fecal.taxa,taxa)
+  }
+}
+
+fecal_host.corrs <- data.frame(
+  pvals = fecal.pvals,
+  est  = fecal.est,
+  stat = fecal.stat,
+  host = fecal.host,
+  taxa = fecal.taxa,
+  qval = qvalue::qvalue(fecal.pvals)$qvalues
+)
+
+# nothing makes qvalue cutoffs, but there are some interesting correlations
+# to potentially keep an eye on. For example, Turicibacter, Ruminococcus, and
+# Prevotella_9
+
 # ANALYSIS: NASAL ANALYSIS ------------------------------------------------
 
 # Get names for nasal samples use rarefied names to be consistent between normalized
