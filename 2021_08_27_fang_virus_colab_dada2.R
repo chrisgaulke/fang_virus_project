@@ -114,81 +114,81 @@ make_taxa_df <- function(tax){
 }
 
 # IMPORT DATA -------------------------------------------------------------
-
-path <- "~/unsynced_projects/raw_data/2021_08_13_yuan_pig_vaccine_16S_raw/"
-filt.path <- "/Users/cgaulke/Documents/research/fang_virus_colab/data/filtered_data/" #filtered file directory make sure to update
-#git ignore to ignore this
-list.files(path)
-
-fnFs <- sort(list.files(path, pattern="_R1_001.fastq.gz", full.names = TRUE))
-fnRs <- sort(list.files(path, pattern="_R2_001.fastq.gz", full.names = TRUE))
-
-
-# ANALYSIS: QC ------------------------------------------------------------
-
-#make sure the lengths are the same
-length(fnFs) == length(fnRs)
-
-#get sample names, in our case we have to leave some extra on the end
-sample.names <- sapply(strsplit(basename(fnFs), "_R1"), `[`, 1)
-
-#preview
-plotQualityProfile(fnFs[1])
-plotQualityProfile(fnRs[1])
-
-#aggregate all data together now
-fnFs_qual.plot <- plotQualityProfile(fnFs,aggregate = T)
-fnRs_qual.plot <- plotQualityProfile(fnRs,aggregate = T)
-
-#set up for filtering
-filtFs <- file.path(filt.path, "filtered",
-                    paste0(sample.names, "_F_filt.fastq.gz"))
-
-filtRs <- file.path(filt.path, "filtered",
-                    paste0(sample.names, "_R_filt.fastq.gz"))
-
-#make these named
-names(filtFs) <- sample.names
-names(filtRs) <- sample.names
-
-#filter and trim
-#by looking at the data we see a rapid drop in quality around 200bp. Since the
-#average drops below ~25 around 230 we will truncate at 220 for the reverse. The
-#forward looks better (this is usual) so we will truncate around 260
-
-#note the original tutorial uses generic variable names
-
-#stopped here
-
-filter.out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, truncLen=c(280,250),
-                            maxN=0, maxEE=c(2,2), truncQ=2, rm.phix=TRUE,
-                            compress=TRUE, multithread=TRUE) # On Windows set multithread=FALSE
-#take a look
-View(filter.out)
-
-colMeans(filter.out)
-mean(1-(filter.out[,2]/filter.out[,1]))
-
-#lets look at these numbers in a little more detail
-fivenum(1-(filter.out[,2]/filter.out[,1]))
-hist(1-(filter.out[,2]/filter.out[,1]))
-
-# since some libraries look like there is a higher level of filtration
-# than others lets take a closer look at this
-
-sort(1-(filter.out[,2]/filter.out[,1]))
-
-#let's keep this in mind moving forward
-
-# ANALYSIS: ERROR ---------------------------------------------------------
-
-errF <- learnErrors(filtFs, multithread=TRUE)
-errR <- learnErrors(filtRs, multithread=TRUE)
-plotErrors(errF, nominalQ=TRUE)
-
-dadaFs <- dada(filtFs, err=errF, multithread=TRUE)
-dadaRs <- dada(filtRs, err=errR, multithread=TRUE)
-
+#
+# path <- "~/unsynced_projects/raw_data/2021_08_13_yuan_pig_vaccine_16S_raw/"
+# filt.path <- "/Users/cgaulke/Documents/research/fang_virus_colab/data/filtered_data/" #filtered file directory make sure to update
+# #git ignore to ignore this
+# list.files(path)
+#
+# fnFs <- sort(list.files(path, pattern="_R1_001.fastq.gz", full.names = TRUE))
+# fnRs <- sort(list.files(path, pattern="_R2_001.fastq.gz", full.names = TRUE))
+#
+#
+# # ANALYSIS: QC ------------------------------------------------------------
+#
+# #make sure the lengths are the same
+# length(fnFs) == length(fnRs)
+#
+# #get sample names, in our case we have to leave some extra on the end
+# sample.names <- sapply(strsplit(basename(fnFs), "_R1"), `[`, 1)
+#
+# #preview
+# plotQualityProfile(fnFs[1])
+# plotQualityProfile(fnRs[1])
+#
+# #aggregate all data together now
+# fnFs_qual.plot <- plotQualityProfile(fnFs,aggregate = T)
+# fnRs_qual.plot <- plotQualityProfile(fnRs,aggregate = T)
+#
+# #set up for filtering
+# filtFs <- file.path(filt.path, "filtered",
+#                     paste0(sample.names, "_F_filt.fastq.gz"))
+#
+# filtRs <- file.path(filt.path, "filtered",
+#                     paste0(sample.names, "_R_filt.fastq.gz"))
+#
+# #make these named
+# names(filtFs) <- sample.names
+# names(filtRs) <- sample.names
+#
+# #filter and trim
+# #by looking at the data we see a rapid drop in quality around 200bp. Since the
+# #average drops below ~25 around 230 we will truncate at 220 for the reverse. The
+# #forward looks better (this is usual) so we will truncate around 260
+#
+# #note the original tutorial uses generic variable names
+#
+# #stopped here
+#
+# filter.out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, truncLen=c(280,250),
+#                             maxN=0, maxEE=c(2,2), truncQ=2, rm.phix=TRUE,
+#                             compress=TRUE, multithread=TRUE) # On Windows set multithread=FALSE
+# #take a look
+# View(filter.out)
+#
+# colMeans(filter.out)
+# mean(1-(filter.out[,2]/filter.out[,1]))
+#
+# #lets look at these numbers in a little more detail
+# fivenum(1-(filter.out[,2]/filter.out[,1]))
+# hist(1-(filter.out[,2]/filter.out[,1]))
+#
+# # since some libraries look like there is a higher level of filtration
+# # than others lets take a closer look at this
+#
+# sort(1-(filter.out[,2]/filter.out[,1]))
+#
+# #let's keep this in mind moving forward
+#
+# # ANALYSIS: ERROR ---------------------------------------------------------
+#
+# errF <- learnErrors(filtFs, multithread=TRUE)
+# errR <- learnErrors(filtRs, multithread=TRUE)
+# plotErrors(errF, nominalQ=TRUE)
+#
+# dadaFs <- dada(filtFs, err=errF, multithread=TRUE)
+# dadaRs <- dada(filtRs, err=errR, multithread=TRUE)
+#
 
 # ANALYSIS: MERGE AND FILTER -----------------------------------------------
 mergers <- mergePairs(dadaFs, filtFs, dadaRs, filtRs, verbose=TRUE)
@@ -421,7 +421,6 @@ fecal_shannon.glmmtmb <- glmmTMB(fecal.shannon~ date + vaccine*virus + (1|ID),
                                  data = fecal_master_metadata.df
                                  )
 
-#for both models it appears as though
 
 #richness
 fecal_richness.df <- data.frame(richness = fecal.richness,
@@ -569,7 +568,7 @@ fecal_seqtab_nochim_pca.plot +
 
 #all
 fecal_seqtab_nochim_pca.plotall <- fecal_seqtab_nochim_pca.plot +
-  geom_point(size = 5)+
+  geom_point(size = 7)+
   scale_color_brewer("Group", type = "qual",
                      palette = 2,
                      direction = 1,
@@ -592,6 +591,7 @@ fecal_seqtab_nochim_pca.plotall <- fecal_seqtab_nochim_pca.plot +
                     direction = 1,
                     aesthetics = "fill"
   ) +
+  scale_shape_discrete("Day")+
   theme(
     text = element_text(size = 20, colour = "black"),
     panel.grid.major = element_line(colour = "grey99"),
@@ -602,12 +602,15 @@ fecal_seqtab_nochim_pca.plotall <- fecal_seqtab_nochim_pca.plot +
     aspect.ratio = 1,
     plot.title = element_text(hjust = 0.5)
   )+
-  guides(fill = "none") +ggtitle("All")
+  guides(fill = "none") +
+  ggtitle("All")+
+  ylab("PC2 (12.0%)")+
+  xlab("PC1 (57.8%)")
 
 
 #day 0
 fecal_seqtab_nochim_pca.plot0d <- fecal_seqtab_nochim_pca.plot +
-  geom_point(data = ~ subset(., date == "0d") ,size = 5)+
+  geom_point(data = ~ subset(., date == "0d") ,size = 7)+
   scale_color_brewer("Group",
                      type = "qual",
                      palette = 2,
@@ -641,12 +644,15 @@ fecal_seqtab_nochim_pca.plot0d <- fecal_seqtab_nochim_pca.plot +
     aspect.ratio = 1,
     plot.title = element_text(hjust = 0.5)
   )+
-  guides(shape = "none", fill = "none") +  ggtitle("Day 0")
+  guides(shape = "none", fill = "none") +
+  ggtitle("Day 0")+
+  ylab("PC2 (12.0%)")+
+  xlab("PC1 (57.8%)")
 
 
 # day 35
 fecal_seqtab_nochim_pca.plot35d <- fecal_seqtab_nochim_pca.plot +
-  geom_point(data = ~ subset(., date == "35d") ,size = 5) +
+  geom_point(data = ~ subset(., date == "35d") ,size = 7) +
   scale_color_brewer("Group", type = "qual",
                      palette = 2,
                      direction = 1,
@@ -679,13 +685,14 @@ fecal_seqtab_nochim_pca.plot35d <- fecal_seqtab_nochim_pca.plot +
     aspect.ratio = 1,
     plot.title = element_text(hjust = 0.5)
   )+
-  guides(shape = "none", fill = "none")+ ggtitle("Day 35")
-
-
+  guides(shape = "none", fill = "none")+
+  ggtitle("Day 35")+
+  ylab("PC2 (12.0%)")+
+  xlab("PC1 (57.8%)")
 
 # day 45
 fecal_seqtab_nochim_pca.plot45d <- fecal_seqtab_nochim_pca.plot +
-  geom_point(data = ~ subset(., date == "45d") ,size = 5) +
+  geom_point(data = ~ subset(., date == "45d") ,size = 7) +
   scale_color_brewer("Group", type = "qual",
                      palette = 2,
                      direction = 1,
@@ -718,7 +725,10 @@ fecal_seqtab_nochim_pca.plot45d <- fecal_seqtab_nochim_pca.plot +
     aspect.ratio = 1,
     plot.title = element_text(hjust = 0.5)
   )+
-  guides(shape = "none", fill = "none")+ ggtitle("Day 45")
+  guides(shape = "none", fill = "none")+
+  ggtitle("Day 45")+
+  ylab("PC2 (12.0%)")+
+  xlab("PC1 (57.8%)")
 
 #This is where we put it all together in one plot
 fecal_asv_by_day.plot <- plot_grid(fecal_seqtab_nochim_pca.plotall,
@@ -757,16 +767,13 @@ fecal_seqtab_nochim2.adonis
 
 
 #we can kinda settle this using a slightly different function
-x <- adonis2(fecal_seqtab_nochim.relabd ~  date + virus * vaccine  ,
+fecal_seqtab_nochim2.adonis2 <- adonis2(fecal_seqtab_nochim.relabd ~  date + virus * vaccine  ,
             permutations = 5000,
             data = fecal_master_metadata.df, by = "margin")
 
 y <- adonis2(fecal_seqtab_nochim.relabd ~   virus * vaccine + date ,
              permutations = 5000,
              data = fecal_master_metadata.df, by = "margin")
-
-x
-y
 
 # ANALYSIS: FECAL PCA GENUS-----------------------------------------------------
 
@@ -836,7 +843,10 @@ fecal_genus_pca.plotall <- fecal_genus_pca.plot +
     aspect.ratio = 1,
     plot.title = element_text(hjust = 0.5)
   )+
-  guides(fill = "none") +ggtitle("All")
+  guides(fill = "none") +
+  ggtitle("All") +
+  ylab("PC2 (13.4%)")+
+  xlab("PC1 (71.4%)")
 
 
 # start
@@ -874,7 +884,10 @@ fecal_genus_pca.plot0d <- fecal_genus_pca.plot +
     aspect.ratio = 1,
     plot.title = element_text(hjust = 0.5)
   )+
-  guides(shape = "none", fill = "none") +  ggtitle("Day 0")
+  guides(shape = "none", fill = "none") +
+  ggtitle("Day 0")+
+  ylab("PC2 (13.4%)")+
+  xlab("PC1 (71.4%)")
 
 #35 days
 
@@ -912,7 +925,10 @@ fecal_genus_pca.plot35d <- fecal_genus_pca.plot +
     aspect.ratio = 1,
     plot.title = element_text(hjust = 0.5)
   )+
-  guides(shape = "none", fill = "none")+ ggtitle("Day 35")
+  guides(shape = "none", fill = "none")+
+  ggtitle("Day 35")+
+  ylab("PC2 (13.4%)")+
+  xlab("PC1 (71.4%)")
 
 #45 days
 
@@ -950,7 +966,10 @@ fecal_genus_pca.plot45d <- fecal_genus_pca.plot +
     aspect.ratio = 1,
     plot.title = element_text(hjust = 0.5)
   )+
-  guides(shape = "none", fill = "none")+ ggtitle("Day 45")
+  guides(shape = "none", fill = "none")+
+  ggtitle("Day 45")+
+  ylab("PC2 (13.4%)")+
+  xlab("PC1 (71.4%)")
 
 # If you look at the structure it appears like the vaccinated and the the mock infected
 # cluster together while the shame vaccinated:infected cluster more distinctly at 45d post
@@ -970,10 +989,6 @@ pdf("figures/fecal_genus_pca_plots.pdf", width = 14, height = 14)
 fecal_genus_by_day.plot
 
 dev.off()
-
-# something strange is going on here... Why are only G5 and G3 moving at day 45?
-# Could the metadata be off, or was something done to these animals that is different
-# from G4 ?
 
 
 # ANALYSIS: FECAL ADONIS GENUS --------------------------------------------------------
@@ -1149,11 +1164,24 @@ plot_grid(plots[[1]],
           legend)
 dev.off()
 
+plot1 <- plot_grid(plots[[1]],
+                plots[[2]],
+                plots[[3]],
+                plots[[4]],
+                plots[[5]],
+                plots[[6]], labels = "AUTO",
+                align = "h", axis = "tb")
+plot2 <- plot_grid(plot1, legend, rel_widths = c(3,1))
+
+pdf("figures/sig_genera_feces_trun.pdf", width = 8.5, height = 6)
+plot2
+dev.off()
 
 # ANALYSIS: FECAL HOST CORRS ----------------------------------------------
 
 fecal_corrs.genus <- fecal_genus.df[which(rownames(fecal_genus.df) %in% rownames(fecal_add_metadata)),]
 #fecal_corrs.genus <- fecal_corrs.genus[,which(colSums(fecal_corrs.genus) > 0)]
+#filter to remove low abudance taxa
 fecal_corrs.genus <- fecal_corrs.genus[,apply(fecal_corrs.genus,2, function(x){sum(x>0) > length(x)*.33})]
 
 fecal.pvals <- NULL
@@ -1189,8 +1217,15 @@ fecal_host.corrs <- data.frame(
   qval = qvalue::qvalue(fecal.pvals)$qvalues
 )
 
+write.table(x = fecal_host.corrs[which(fecal_host.corrs$pvals < 0.05),],
+            file = "fecal_corrs.txt",
+            sep = "\t",
+            quote = F,
+            row.names = F,
+            col.names = T)
+
 # nothing makes qvalue cutoffs, but there are some interesting correlations
-# to potentially keep an eye on. For example, Turicibacter, Ruminococcus, and
+# to potentially keep an eye on. For example, Ruminococcus and
 # Prevotella_9
 
 # ANALYSIS: NASAL ANALYSIS ------------------------------------------------
@@ -2440,3 +2475,183 @@ placenta_bar_genus.plot <-
 pdf("figures/placenta_genus_abudance_barplots.pdf", width = 10 )
 placenta_bar_genus.plot
 dev.off()
+
+
+# ANALYSIS: FECAL BETA-DIVERSITY CORRS  --------------------------------------
+
+#make data frame
+pca_cor.df <- fecal_genus_pca.df[which(rownames(fecal_genus_pca.df) %in% rownames(fecal_add_metadata)),]
+all(rownames(pca_cor.df) == rownames(fecal_add_metadata))
+
+pca_cor.df$viremia <- fecal_add_metadata$viremia
+pca_cor.df$cd4 <- fecal_add_metadata$cd4
+pca_cor.df$cd8 <- fecal_add_metadata$cd8
+
+
+# Since we are only interested in how microbiome diversity associates with
+# virus specific parameters, we will remove the PBS-PBS group as they have now
+# virus and would only serve as an artificial anchor at 0 possibly obscuring or
+# inflating correlations
+
+pca_cor.df <- pca_cor.df[-which(pca_cor.df$group == "G5"),]
+
+cor.test(pca_cor.df$PC1, pca_cor.df$viremia, method = "s")
+cor.test(pca_cor.df$PC1, pca_cor.df$cd4, method = "s")
+cor.test(pca_cor.df$PC1, pca_cor.df$cd8, method = "s")
+
+
+#plots
+
+#Viremia
+vir_pc1.plot <- ggplot(data = pca_cor.df, aes(x = PC1,
+                              y = viremia)) +
+  geom_point(size = 5) +
+  geom_smooth(method = "lm", color = "black") +
+  theme(
+    text = element_text(size = 18, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  labs(x = "PC1", y = expression(Log[10](viral~genomic~copy/ml)))
+
+#CD4
+cd4_pc1.plot <- ggplot(data = pca_cor.df, aes(x = PC1,
+                              y = cd4)) +
+  geom_point(size = 5) +
+  geom_smooth(method = "lm", color = "black") +
+  theme(
+    text = element_text(size = 18, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  ylab(expression("%"~CD3^{'+'}~CD4^{'+'}~IFN~gamma^{'+'}))
+
+#CD8
+
+cd8_pc1.plot <-ggplot(data = pca_cor.df, aes(x = PC1,
+                              y = cd8)) +
+  geom_point(size = 5) +
+  geom_smooth(method = "lm", color = "black") +
+  theme(
+    text = element_text(size = 18, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  ylab(expression("%"~CD3^{'+'}~CD8^{'+'}~IFN~gamma^{'+'}))
+
+vir_pc1.plot
+cd4_pc1.plot
+cd8_pc1.plot
+
+#plot significant
+pdf("figures/viral_load_pc1_plot.pdf")
+vir_pc1.plot
+dev.off()
+# ANALYSIS: FECAL RICHNESS CORRS  --------------------------------------
+
+#make df
+richness_core.df <- fecal_richness.df[which(rownames(fecal_richness.df) %in% rownames(fecal_add_metadata)),]
+all(rownames(richness_core.df) == rownames(fecal_add_metadata))
+
+#add metadata
+richness_core.df$viremia <- fecal_add_metadata$viremia
+richness_core.df$cd8 <- fecal_add_metadata$cd8
+richness_core.df$cd4 <- fecal_add_metadata$cd4
+
+
+
+# Since we are only interested in how microbiome diversity associates with
+# virus specific parameters, we will remove the PBS-PBS group as they have now
+# virus and would only serve as an artificial anchor at 0 possibly obscuring or
+# inflating correlations
+
+
+richness_core.df <- richness_core.df[-which(richness_core.df$group == "0_0"),]
+
+cor.test(richness_core.df$viremia, richness_core.df$richness, method = "s")
+cor.test(richness_core.df$cd4, richness_core.df$richness, method = "s")
+cor.test(richness_core.df$cd8, richness_core.df$richness, method = "s")
+
+
+#Viral Load
+vir_richness.plot <- ggplot(data = richness_core.df, aes(x = richness,
+                              y = viremia)) +
+  geom_point(size = 5) +
+  geom_smooth(method = "lm", color = "black") +  theme(
+    text = element_text(size = 18, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  labs(x = "Richness", y = expression(Log[10](viral~genomic~copy/ml)))+
+  xlim(c(125, 275))
+
+
+#CD4
+
+cd4_richness.plot <- ggplot(data = richness_core.df, aes(x = richness,
+                                    y = cd4)) +
+  geom_point(size = 5) +
+  geom_smooth(method = "lm", color = "black") +  theme(
+    text = element_text(size = 18, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  ylab(expression("%"~CD3^{'+'}~CD4^{'+'}~IFN~gamma^{'+'}))+
+  xlim(c(125, 275))+
+  xlab("Richness")
+
+
+#CD8
+
+cd8_richness.plot <- ggplot(data = richness_core.df, aes(x = richness,
+                                    y = cd8)) +
+  geom_point(size = 5) +
+  geom_smooth(method = "lm", color = "black") +
+  theme(
+    text = element_text(size = 18, colour = "black"),
+    panel.grid.major = element_line(colour = "grey99"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text = element_text(colour = "black"),
+    aspect.ratio = 1,
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  ylab(expression("%"~CD3^{'+'}~CD8^{'+'}~IFN~gamma^{'+'}))+
+  xlim(c(125, 275))+
+  xlab("Richness")
+
+#plot significant
+pdf("figures/viral_load_richness_plot.pdf")
+vir_richness.plot
+dev.off()
+
+pdf("figures/cd8_richness_plot.pdf")
+cd8_richness.plot
+dev.off()
+
