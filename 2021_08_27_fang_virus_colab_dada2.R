@@ -532,7 +532,7 @@ fecal_seqtab_nochim_pca.plot +
   #                                        palette = 2,
   #                                        direction = 1,
   #                                        aesthetics = "colour",
-  #                                        labels= c("Vir+Vax", "Vir", "Control")
+  #                                        labels= c("Vaccinated/Challenged", "Unvaccinated/Challenged", "Unvaccinated/Unchallenged")
   # )+
   # stat_ellipse(inherit.aes = FALSE,
   #              type = "t",
@@ -573,7 +573,7 @@ fecal_seqtab_nochim_pca.plotall <- fecal_seqtab_nochim_pca.plot +
                      palette = 2,
                      direction = 1,
                      aesthetics = "colour",
-                     labels= c("Vir+Vax", "Vir", "Control")
+                     labels= c("Vaccinated/Challenged", "Unvaccinated/Challenged", "Unvaccinated/Unchallenged")
   )+
   # stat_ellipse(inherit.aes = FALSE,
   #              type = "t",
@@ -594,6 +594,7 @@ fecal_seqtab_nochim_pca.plotall <- fecal_seqtab_nochim_pca.plot +
   scale_shape_discrete("Day")+
   theme(
     text = element_text(size = 20, colour = "black"),
+    legend.key = element_rect(fill = "white", color = NA),
     panel.grid.major = element_line(colour = "grey99"),
     panel.grid.minor = element_blank(),
     panel.background = element_blank(),
@@ -616,19 +617,19 @@ fecal_seqtab_nochim_pca.plot0d <- fecal_seqtab_nochim_pca.plot +
                      palette = 2,
                      direction = 1,
                      aesthetics = "colour",
-                     labels= c("Vir+Vax", "Vir", "Control")
+                     labels= c("Vaccinated/Challenged", "Unvaccinated/Challenged", "Unvaccinated/Unchallenged")
   )+
-  stat_ellipse(inherit.aes = FALSE,
-                type = "t",
-                level = .3, #since we don't care about the stat, we can lower confidence interval
-                geom = "polygon",
-                alpha = .3,
-                data = subset(fecal_seqtab_nochim_pca.df,date == "0d"),
-                aes(x = PC1,
-                    y = PC2,
-                    color = group,
-                    fill = group)
-  )+
+  # stat_ellipse(inherit.aes = FALSE,
+  #               type = "t",
+  #               level = .3, #since we don't care about the stat, we can lower confidence interval
+  #               geom = "polygon",
+  #               alpha = .3,
+  #               data = subset(fecal_seqtab_nochim_pca.df,date == "0d"),
+  #               aes(x = PC1,
+  #                   y = PC2,
+  #                   color = group,
+  #                   fill = group)
+  # )+
   scale_fill_brewer(type = "qual",
                     palette = 2,
                     direction = 1,
@@ -636,6 +637,7 @@ fecal_seqtab_nochim_pca.plot0d <- fecal_seqtab_nochim_pca.plot +
   ) +
   theme(
     text = element_text(size = 20, colour = "black"),
+    legend.key = element_rect(fill = "white", color = NA),
     panel.grid.major = element_line(colour = "grey99"),
     panel.grid.minor = element_blank(),
     panel.background = element_blank(),
@@ -657,19 +659,19 @@ fecal_seqtab_nochim_pca.plot35d <- fecal_seqtab_nochim_pca.plot +
                      palette = 2,
                      direction = 1,
                      aesthetics = "colour",
-                     labels= c("Vir+Vax", "Vir", "Control")
+                     labels= c("Vaccinated/Challenged", "Unvaccinated/Challenged", "Unvaccinated/Unchallenged")
   ) +
-  stat_ellipse(inherit.aes = FALSE,
-                  type = "t",
-                  level = .3, #since we don't care about the stat, we can lower confidence interval
-                  geom = "polygon",
-                  alpha = .3,
-                  data = subset(fecal_seqtab_nochim_pca.df,date == "35d"),
-                  aes(x = PC1,
-                      y = PC2,
-                      color = group,
-                      fill = group)
-  )+
+  # stat_ellipse(inherit.aes = FALSE,
+  #                 type = "t",
+  #                 level = .3, #since we don't care about the stat, we can lower confidence interval
+  #                 geom = "polygon",
+  #                 alpha = .3,
+  #                 data = subset(fecal_seqtab_nochim_pca.df,date == "35d"),
+  #                 aes(x = PC1,
+  #                     y = PC2,
+  #                     color = group,
+  #                     fill = group)
+  # )+
   scale_fill_brewer(type = "qual",
                     palette = 2,
                     direction = 1,
@@ -677,6 +679,7 @@ fecal_seqtab_nochim_pca.plot35d <- fecal_seqtab_nochim_pca.plot +
   ) +
   theme(
     text = element_text(size = 20, colour = "black"),
+    legend.key = element_rect(fill = "white", color = NA),
     panel.grid.major = element_line(colour = "grey99"),
     panel.grid.minor = element_blank(),
     panel.background = element_blank(),
@@ -697,19 +700,19 @@ fecal_seqtab_nochim_pca.plot45d <- fecal_seqtab_nochim_pca.plot +
                      palette = 2,
                      direction = 1,
                      aesthetics = "colour",
-                     labels= c("Vir+Vax", "Vir", "Control")
+                     labels= c("Vaccinated/Challenged", "Unvaccinated/Challenged", "Unvaccinated/Unchallenged")
   )+
-  stat_ellipse(inherit.aes = FALSE,
-               type = "t",
-               level = .3, #since we don't care about the stat, we can lower confidence interval
-               geom = "polygon",
-               alpha = .3,
-               data = subset(fecal_seqtab_nochim_pca.df,date == "45d"),
-               aes(x = PC1,
-                   y = PC2,
-                   color = group,
-                   fill = group)
-  )+
+  # stat_ellipse(inherit.aes = FALSE,
+  #              type = "t",
+  #              level = .3, #since we don't care about the stat, we can lower confidence interval
+  #              geom = "polygon",
+  #              alpha = .3,
+  #              data = subset(fecal_seqtab_nochim_pca.df,date == "45d"),
+  #              aes(x = PC1,
+  #                  y = PC2,
+  #                  color = group,
+  #                  fill = group)
+  # )+
   scale_fill_brewer(type = "qual",
                     palette = 2,
                     direction = 1,
@@ -717,6 +720,7 @@ fecal_seqtab_nochim_pca.plot45d <- fecal_seqtab_nochim_pca.plot +
   ) +
   theme(
     text = element_text(size = 20, colour = "black"),
+    legend.key = element_rect(fill = "white", color = NA),
     panel.grid.major = element_line(colour = "grey99"),
     panel.grid.minor = element_blank(),
     panel.background = element_blank(),
@@ -740,6 +744,14 @@ fecal_asv_by_day.plot <- plot_grid(fecal_seqtab_nochim_pca.plotall,
 )
 
 pdf("figures/fecal_asv_pca_plots.pdf", width = 14, height = 14)
+fecal_asv_by_day.plot
+dev.off()
+
+png("figures/fecal_asv_pca_plots.png",
+    width = 14,
+    height = 10,
+    units = "in",
+    res = 400)
 fecal_asv_by_day.plot
 dev.off()
 
@@ -815,7 +827,7 @@ fecal_genus_pca.plotall <- fecal_genus_pca.plot +
                      palette = 2,
                      direction = 1,
                      aesthetics = "colour",
-                     labels= c("Vir+Vax", "Vir", "Control")
+                     labels= c("Vaccinated/Challenged", "Unvaccinated/Challenged", "Unvaccinated/Unchallenged")
   )+
   # stat_ellipse(inherit.aes = FALSE,
   #              type = "t",
@@ -856,19 +868,19 @@ fecal_genus_pca.plot0d <- fecal_genus_pca.plot +
                      palette = 2,
                      direction = 1,
                      aesthetics = "colour",
-                     labels= c("Vir+Vax", "Vir", "Control")
+                     labels= c("Vaccinated/Challenged", "Unvaccinated/Challenged", "Unvaccinated/Unchallenged")
   )+
-  stat_ellipse(inherit.aes = FALSE,
-               type = "t",
-               level = .3, #since we don't care about the stat, we can lower confidence interval
-               geom = "polygon",
-               alpha = .3,
-               data = subset(fecal_genus_pca.df,date == "0d"),
-               aes(x = PC1,
-                   y = PC2,
-                   color = group,
-                   fill = group)
-  )+
+  # stat_ellipse(inherit.aes = FALSE,
+  #              type = "t",
+  #              level = .3, #since we don't care about the stat, we can lower confidence interval
+  #              geom = "polygon",
+  #              alpha = .3,
+  #              data = subset(fecal_genus_pca.df,date == "0d"),
+  #              aes(x = PC1,
+  #                  y = PC2,
+  #                  color = group,
+  #                  fill = group)
+  # )+
   scale_fill_brewer(type = "qual",
                     palette = 2,
                     direction = 1,
@@ -897,19 +909,19 @@ fecal_genus_pca.plot35d <- fecal_genus_pca.plot +
                      palette = 2,
                      direction = 1,
                      aesthetics = "colour",
-                     labels= c("Vir+Vax", "Vir", "Control")
+                     labels= c("Vaccinated/Challenged", "Unvaccinated/Challenged", "Unvaccinated/Unchallenged")
   )+
-  stat_ellipse(inherit.aes = FALSE,
-               type = "t",
-               level = .3, #since we don't care about the stat, we can lower confidence interval
-               geom = "polygon",
-               alpha = .3,
-               data = subset(fecal_genus_pca.df,date == "35d"),
-               aes(x = PC1,
-                   y = PC2,
-                   color = group,
-                   fill = group)
-  )+
+  # stat_ellipse(inherit.aes = FALSE,
+  #              type = "t",
+  #              level = .3, #since we don't care about the stat, we can lower confidence interval
+  #              geom = "polygon",
+  #              alpha = .3,
+  #              data = subset(fecal_genus_pca.df,date == "35d"),
+  #              aes(x = PC1,
+  #                  y = PC2,
+  #                  color = group,
+  #                  fill = group)
+  # )+
   scale_fill_brewer(type = "qual",
                     palette = 2,
                     direction = 1,
@@ -938,19 +950,19 @@ fecal_genus_pca.plot45d <- fecal_genus_pca.plot +
                      palette = 2,
                      direction = 1,
                      aesthetics = "colour",
-                     labels= c("Vir+Vax", "Vir", "Control")
+                     labels= c("Vaccinated/Challenged", "Unvaccinated/Challenged", "Unvaccinated/Unchallenged")
   )+
-  stat_ellipse(inherit.aes = FALSE,
-               type = "t",
-               level = .3, #since we don't care about the stat, we can lower confidence interval
-               geom = "polygon",
-               alpha = .3,
-               data = subset(fecal_genus_pca.df,date == "45d"),
-               aes(x = PC1,
-                   y = PC2,
-                   color = group,
-                   fill = group)
-               )+
+  # stat_ellipse(inherit.aes = FALSE,
+  #              type = "t",
+  #              level = .3, #since we don't care about the stat, we can lower confidence interval
+  #              geom = "polygon",
+  #              alpha = .3,
+  #              data = subset(fecal_genus_pca.df,date == "45d"),
+  #              aes(x = PC1,
+  #                  y = PC2,
+  #                  color = group,
+  #                  fill = group)
+  #              )+
   scale_fill_brewer(type = "qual",
                      palette = 2,
                      direction = 1,
@@ -2327,8 +2339,12 @@ fecal_bar_genus.df$group <- fecal_master_metadata.df$group
 fecal_bar_genus.melt <- melt(fecal_bar_genus.df,
                              id.vars = c("id", "virus", "vaccine", "group","date"))
 
+
 fecal_bar_genus.plot <- ggplot(fecal_bar_genus.melt,
-                                aes(x = factor(id),
+                                aes(x = factor(id,levels = c(16,18,21,26,32,4,6,8, #G3
+                                                             10,19,27,39,5,36, #G4
+                                                             12,13,22,28,29,30,41 #G5
+                                                             )),
                                     y = value,
                                     fill = variable))
 
@@ -2344,6 +2360,7 @@ fecal_bar_genus.plot <-
                     direction = 1,
                     aesthetics = "fill"
   ) +
+ # geom_text(aes(label = id))+
   facet_grid(.~date,
              scales = "free_x",
              labeller = as_labeller(c("0d"  = "Day 0",
